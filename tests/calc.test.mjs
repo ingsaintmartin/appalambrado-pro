@@ -10,6 +10,14 @@ import {
   TIPOS_ALAMBRADO, PARAMS_DEFAULT
 } from '../src/lib/calc.js';
 import { generarPresupuestoPDF } from '../src/lib/pdf.js';
+import {
+  replanteoExacto, replanteoLinea, puntoEnDistancia,
+  validarVarillas, materialesTranqueras
+} from '../src/lib/calc.js';
+import {
+  distribuirAlturas, calcularEsquema, hilosEfectivos,
+  ALTURAS_TRADICIONAL, ALTURAS_ELECTRICO
+} from '../src/lib/esquema.js';
 
 let ok = 0, mal = 0;
 function assert(cond, nombre, detalle) {
@@ -122,6 +130,74 @@ const kpi2 = calcularKPIs(proyectoEje, ejeBase, preciosTest);
 assert(kpi2.total.desvio > 0 && !kpi2.total.ok, 'sobrecosto grande → total en rojo');
 assert(kpi2.total.pres === cot.subtotal + cot.contingencia.monto, 'KPI total excluye el margen');
 assert(kpi2.margenProy < 0.2, 'margen proyectado cae con sobrecosto');
+
+console.log('\n== Replanteo exacto ==');
+const re1 = replanteoExacto(1000, 80);
+assert(re1.n === 13 && cerca(re1.real, 76.923, 0.001), '1000/80 → 13 tramos de 76,923 m (todos iguales)');
+assert(replanteoExacto(1000, 80).n * replanteoExacto(1000, 80).real === 1000, 'n × real = L exacto');
+const re0 = replanteoExacto(0, 80);
+assert(re0.n === 0, 'largo 0 → n 0');
+const rl = replanteoLinea(1000, 80, 15);
+assert(rl.atadores.cantidad === 12, '1000m/80 → 12 atadores (sin contar extremos)');
+assert(rl.tramos.length === 13 && rl.tramos.every((t) => cerca(t.largo, 76.923, 0.01)), '13 tramos parejos');
+assert(rl.intermedios.cantidad === 52, '52 intermedios (4 por tramo × 13)');
+assert(rl.tramos.every((t) => cerca(t.claroReal, 15.385, 0.01)), 'claros intermedios parejos 15,385 m');
+assert(rl.posAtadores[0] === 0 && cerca(rl.posAtadores[13], 1000, 0.01), 'posiciones 0..1000');
+
+console.log('\n== puntoEnDistancia ==');
+const vv = [{ lat: -35, lng: -62 }, { lat: -35, lng: -61.99 }];
+const pto = puntoEnDistancia(vv, 500);
+assert(pto && pto.lng > -62 && pto.lng < -61.99, 'punto a 500 m interpolado sobre el tramo');
+assert(puntoEnDistancia(vv, 99999).lng === -61.99, 'más allá del final → último vértice');
+assert(puntoEnDistancia([{ lat: 0, lng: 0 }], 10) === null, 'menos de 2 vértices → null');
+
+console.log('\n== Regla de varillas ==');
+const vv1 = validarVarillas(15, 9, 'comun');
+assert(vv1.ok && cerca(vv1.espaciamientoCm, 150, 0.1), '15 m / 9 varillas → 150 cm OK (100-180)');
+assert(!validarVarillas(15, 2, 'comun').ok, '15 m / 2 varillas → 500 cm fuera de rango');
+const vv2 = validarVarillas(2.5, 3, 'manga');
+assert(vv2.ok && cerca(vv2.espaciamientoCm, 62.5, 0.1), 'manga 2,5 m / 3 → 62,5 cm OK (60-100)');
+assert(!validarVarillas(2.5, 1, 'manga').ok, 'manga 2,5 m / 1 → 125 cm fuera de rango');
+assert(validarVarillas(15, 0, 'comun').ok, '0 varillas → ok');
+
+console.log('\n== Tranqueras → esquineros ==');
+const trq = materialesTranqueras([{ pos: 120, tipo: 'tranquera' }, { pos: 400, tipo: 'tranqueron' }], true);
+assert(trq.cantidad === 2 && trq.esquineros === 4 && trq.tirantes === 8, '2 ubicadas → 4 esquineros + 8 puntales');
+assert(trq.porTipo.tranquera === 1 && trq.porTipo.tranqueron === 1, 'conteo por tipo');
+const mTrq = calcularMateriales('suspendido7', 1000, { tranquerasDetalle: [{ pos: 120, tipo: 'tranquera' }] });
+const cTrq = {}; mTrq.items.forEach((i) => cTrq[i.codigo] = i.cantidad);
+assert(cTrq['poste-esquinero'] === 4, 'BOM: 2 extremos + 2 por tranquera = 4 esquineros');
+assert(cTrq['tirante'] === 8, 'BOM: 8 puntales');
+assert(cTrq['tranquera'] === 1, 'BOM: 1 tranquera ubicada');
+assert(mTrq.resumen.esqTranquera === 2, 'resumen.esqTranquera = 2');
+
+console.log('\n== Hilos configurables (dibujo = cómputo) ==');
+const d3 = distribuirAlturas(3, 220, 1);
+assert(d3.length === 3 && d3[0].alturaCm === 12 && d3[2].alturaCm === 210, '3 hilos en 220: 12/111/210');
+assert(d3[0].tipo === 'pua' && d3[1].tipo === 'liso', 'púas abajo');
+assert(distribuirAlturas(1, 220, 0)[0].tipo === 'liso' && distribuirAlturas(1, 220, 1)[0].tipo === 'pua', '1 hilo respeta púa');
+const mH3 = calcularMateriales('suspendido7', 1000, { hilos: 3, puas: 1 });
+const cH3 = {}; mH3.items.forEach((i) => cH3[i.codigo] = i.cantidad);
+assert(cH3['torniquete'] === 6, '3 hilos → 6 torniquetes');
+assert(mH3.resumen.hilos === 3 && mH3.resumen.puas === 1, 'resumen hilos/puas');
+assert(cH3['alambre-pua-rollo'] === Math.ceil(1000 * 1 * 1.05 / 500), 'púa: 1000×1×1.05 en rollos de 500');
+const mH7 = calcularMateriales('suspendido7', 1000, {});
+assert(mH7.resumen.hilos === 7 && mH7.resumen.puas === 2, 'default tradicional 7/2 (regresión)');
+
+console.log('\n== Esquema reactivo ==');
+const esqT = calcularEsquema({ patron: 'suspendido7', esquema: { preset: 'tradicional' }, distPalosM: 15, varillasPorClaro: 9, modoVarillas: 'comun' });
+assert(esqT.hilos.length === 7 && esqT.hilos[0].alturaCm === 15 && esqT.hilos[6].tipo === 'pua', 'tradicional: 7 hilos fijos');
+const esqC = calcularEsquema({ patron: 'suspendido7', esquema: { preset: 'configurable', hilos: 3, puas: 0, altoPaloCm: 220, tipoPalo: 'x', varillaModo: 'central' }, distPalosM: 45, modoVarillas: 'comun' });
+assert(esqC.hilos.length === 3 && esqC.varillas.modo === 'central' && esqC.varillas.n === 1, 'suspendido 3 hilos + varillón central (ejemplo del usuario)');
+assert(cerca(esqC.varillas.espaciamientoCm, 2250, 1) && !esqC.varillas.ok, 'varillón a 45 m → 2250 cm fuera de rango (avisa)');
+const esqE = calcularEsquema({ patron: 'electrico', hilosElec: 1, distPalosM: 15, modoVarillas: 'comun' });
+assert(esqE.hilos.length === 1 && esqE.hilos[0].tipo === 'electro' && esqE.hilos[0].alturaCm === 80, 'eléctrico 1 hilo a 80 cm');
+const esqE2 = calcularEsquema({ patron: 'electrico', hilosElec: 2, distPalosM: 15, modoVarillas: 'comun' });
+assert(esqE2.hilos.length === 2 && esqE2.hilos[1].alturaCm === 100, 'eléctrico 2 hilos 60/100');
+assert(hilosEfectivos('suspendido7', { preset: 'tradicional' }).hilos === 7, 'hilosEfectivos tradicional');
+assert(hilosEfectivos('suspendido7', { preset: 'configurable', hilos: 5, puas: 2 }).puas === 2, 'hilosEfectivos configurable');
+assert(hilosEfectivos('electrico', null, 2).hilos === 2, 'hilosEfectivos eléctrico');
+assert(ALTURAS_TRADICIONAL.length === 7 && ALTURAS_ELECTRICO[3].length === 3, 'presets completos');
 
 console.log('\n== PDF ==');
 const blob = generarPresupuestoPDF({

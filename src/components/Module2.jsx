@@ -3,23 +3,25 @@
    parámetros de insumos (01–06) con cálculos en vivo, y sidebar
    con la Lista de Materiales (BOM): precios por renglón, peso,
    camión sugerido, exportar TXT y compartir por WhatsApp. */
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Globe, Zap, Columns3, CheckCircle2, Ruler, ShieldCheck,
   Download, Share2, FileText, Sprout, Droplets, Mountain,
-  Check, Link2
+  Check, Link2, DoorOpen, DraftingCompass, Trash2, Plus, TriangleAlert
 } from 'lucide-react';
 import { useStore } from '../store.js';
 import { useFenceMaterials } from '../hooks/useFenceMaterials.js';
 import { fmtM, fmtNum } from '../lib/format.js';
-import { Card, Badge, Btn, Chip, SliderRow, Stepper, SectionTitle, Toggle, EmptyState } from './ui.jsx';
-import CrossSection from './CrossSection.jsx';
+import { TIPOS_PALO } from '../lib/esquema.js';
+import { Card, Badge, Btn, Chip, SliderRow, Stepper, SectionTitle, Toggle, EmptyState, Field } from './ui.jsx';
+import CorteReactivo from './CorteReactivo.jsx';
+import EsquemaPlanta from './EsquemaPlanta.jsx';
 
 const PATRONES = [
   {
     id: 'suspendido7', titulo: 'Tradicional Suspendido', icon: Globe,
-    desc: '7 Hilos (5 lisos 17/15 Alta Resistencia + 2 púas Super Bagual). Separación de postes hasta 80m con varillado denso elástico.',
-    chips: ['7 Hilos Mixtos', 'Alta Tensión']
+    desc: '7 Hilos (5 lisos 17/15 Alta Resistencia + 2 púas Super Bagual). Separación de postes hasta 80m con varillado denso elástico. Versión configurable: 1-10 hilos.',
+    chips: ['Mixto configurable', 'Alta Tensión']
   },
   {
     id: 'convencional', titulo: 'Convencional Firme', icon: Columns3,
@@ -28,8 +30,8 @@ const PATRONES = [
   },
   {
     id: 'electrico', titulo: 'Eléctrico Boyero', icon: Zap,
-    desc: '3 hilos electroplásticos/aluminizados sobre postes livianos y varillas aisladoras. Especial para rotativo o subdivisión liviana.',
-    chips: ['3 Hilos Electrificados', 'Aisladores Rígidos']
+    desc: '1 a 3 hilos electroplásticos/aluminizados sobre postes livianos y varillas aisladoras. Especial para rotativo o subdivisión liviana.',
+    chips: ['1-3 Hilos Electrificados', 'Aisladores Rígidos']
   }
 ];
 
@@ -68,6 +70,66 @@ function PrecioInput({ codigo }) {
   );
 }
 
+/* Editor de tranqueras ubicadas en la línea */
+function TranquerasEditor({ detalle, metros, onChange }) {
+  const [pos, setPos] = useState('');
+  const [tipo, setTipo] = useState('tranquera');
+  const L = Math.max(0, parseFloat(metros) || 0);
+
+  const agregar = () => {
+    const p = parseFloat(pos);
+    if (isNaN(p) || p < 0 || p > L) return;
+    onChange([...detalle, { pos: Math.round(p * 10) / 10, tipo }].sort((a, b) => a.pos - b.pos));
+    setPos('');
+  };
+  const quitar = (i) => onChange(detalle.filter((_, j) => j !== i));
+  const cambiar = (i, patch) => onChange(detalle.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+
+  return (
+    <div className="flex flex-col gap-2">
+      {(detalle || []).map((t, i) => (
+        <div key={i} className="flex items-center gap-2 rounded-md border border-line bg-canvas-2 p-2 flex-wrap">
+          <DoorOpen size={18} className="text-quebracho shrink-0" />
+          <select value={t.tipo} onChange={(e) => cambiar(i, { tipo: e.target.value })}
+            className="field mono text-[13px] py-2!" aria-label="Tipo">
+            <option value="tranquera">Tranquera 3,50 m</option>
+            <option value="tranqueron">Tranquerón 4,50 m</option>
+          </select>
+          <label className="inline-flex items-center gap-1.5 mono text-[13px]">
+            <input type="number" min="0" max={Math.round(L)} step="1" value={t.pos}
+              onChange={(e) => {
+                const p = parseFloat(e.target.value);
+                if (!isNaN(p)) cambiar(i, { pos: Math.min(L, Math.max(0, p)) });
+              }}
+              className="field w-[96px] text-right mono text-[13px] py-2!" aria-label="Posición en metros" />
+            m desde inicio
+          </label>
+          <span className="mono text-[11px] text-muted">→ 2 esq. + 4 puntales</span>
+          <button onClick={() => quitar(i)} className="ml-auto w-10 h-10 rounded-md border-[1.5px] border-bad/50 text-bad flex items-center justify-center" aria-label="Quitar">
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-2 flex-wrap">
+        <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="field mono text-[13px] py-2.5!" aria-label="Tipo de nueva tranquera">
+          <option value="tranquera">Tranquera 3,50 m</option>
+          <option value="tranqueron">Tranquerón 4,50 m</option>
+        </select>
+        <input type="number" min="0" max={Math.round(L)} step="5" value={pos}
+          onChange={(e) => setPos(e.target.value)} placeholder={'Posición en m (0–' + Math.round(L) + ')'}
+          className="field mono text-[13px] w-[190px]" aria-label="Posición" />
+        <Btn className="min-h-[44px]! text-[13px]!" onClick={agregar} disabled={pos === '' || isNaN(parseFloat(pos))}>
+          <Plus size={16} /> Ubicar en la línea
+        </Btn>
+      </div>
+      <div className="mono text-[12px] text-muted flex items-center gap-1.5">
+        <TriangleAlert size={14} className="text-warn shrink-0" />
+        Se ven en el mapa (Módulo 1), en la vista en planta y en el BOM con sus postes y herrajes.
+      </div>
+    </div>
+  );
+}
+
 function NumCard({ n, title, sub, right, children }) {
   return (
     <Card className="p-4">
@@ -92,6 +154,7 @@ export default function Module2() {
   const setModulo = useStore((s) => s.setModulo);
   const { items, resumen, metros, metrosTrazado, params, patron, precios, pesoTn, camion, tipo } = fm;
   const r = resumen || {};
+  const he = fm.hilosEfectivos || { hilos: 7, puas: 1 };
 
   const metrosFmt = (metros || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const grampaItem = items.find((i) => i.codigo === 'grampa');
@@ -212,21 +275,113 @@ export default function Module2() {
         </div>
       </div>
 
-      {/* ---- corte transversal ---- */}
+      {/* ---- corte longitudinal REACTIVO ---- */}
       <Card className="p-4">
         <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
           <div>
             <div className="display font-bold text-[17px] flex items-center gap-2">
-              <Mountain size={18} className="text-agro" /> Corte Transversal & Planialtimetría de Hilos
+              <DraftingCompass size={18} className="text-agro" /> Corte Longitudinal Reactivo
             </div>
-            <div className="text-[13px] text-muted">Distribución de cotas según Norma Tradicional Argentina (Altura final 1.35m)</div>
+            <div className="text-[13px] text-muted">Se dibuja desde los parámetros reales: lo que ves es lo que se computa</div>
           </div>
           <div className="flex gap-3 mono text-[11px] text-muted">
-            <span className="inline-flex items-center gap-1.5"><span className="w-5 h-[3px] bg-quebracho inline-block" /> Hilo Púas (H4 & H7)</span>
-            <span className="inline-flex items-center gap-1.5"><span className="w-5 h-[3px] bg-agro-2 inline-block" /> Hilo Liso 17/15</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-5 h-[3px] bg-[#2d6a4f] inline-block" /> Liso</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-5 h-[3px] bg-[#b45309] inline-block" /> Púa</span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-5 h-[3px] bg-[#2563eb] inline-block" /> Electro</span>
           </div>
         </div>
-        <CrossSection />
+
+        {/* preset del esquema (suspendido) */}
+        {patron === 'suspendido7' && (
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {[
+              { v: 'tradicional', n: 'Tradicional', s: '7 hilos norma' },
+              { v: 'configurable', n: 'Configurable', s: '1-10 hilos' },
+              { v: 'manga-corral', n: 'Manga / Corral', s: 'más hilos y varillas' }
+            ].map((p) => {
+              const act = (fm.esquemaParams.preset || 'tradicional') === p.v;
+              return (
+                <button key={p.v}
+                  onClick={() => {
+                    fm.setEsquema({ preset: p.v });
+                    if (p.v === 'manga-corral') { fm.setEsquema({ hilos: 9, puas: 2 }); fm.setParam({ modoVarillas: 'manga' }); }
+                    if (p.v === 'tradicional') fm.setParam({ modoVarillas: 'comun' });
+                  }}
+                  className={'rounded-md border-[1.5px] p-2.5 min-h-[48px] text-center ' + (act ? 'bg-agro text-white border-agro-deep' : 'bg-white border-line')}
+                  aria-pressed={act}>
+                  <div className="text-[13px] font-bold">{p.n}</div>
+                  <div className={'mono text-[11px] ' + (act ? 'opacity-80' : 'text-muted')}>{p.s}</div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* controles del esquema */}
+        {(patron === 'suspendido7' && fm.esquemaParams.preset === 'configurable') && (
+          <div className="rounded-md border border-line bg-canvas-2 p-3 mb-3 grid md:grid-cols-2 gap-x-6">
+            <SliderRow label="Cantidad de hilos" value={fm.esquemaParams.hilos} min={1} max={10} step={1}
+              onChange={(v) => fm.setEsquema({ hilos: v })} format={(v) => v + ' hilos'} />
+            <SliderRow label="Hilos de púas (van abajo)" value={fm.esquemaParams.puas} min={0} max={Math.min(10, fm.esquemaParams.hilos)} step={1}
+              onChange={(v) => fm.setEsquema({ puas: v })} format={(v) => v + ' púas'} />
+            <div className="md:col-span-2">
+              <Field label="Tipo y altura de palo">
+                <div className="grid grid-cols-3 gap-2">
+                  {TIPOS_PALO.map((t) => {
+                    const act = fm.esquemaParams.altoPaloCm === t.cm;
+                    return (
+                      <button key={t.cm} type="button"
+                        onClick={() => fm.setEsquema({ altoPaloCm: t.cm, tipoPalo: t.etiqueta })}
+                        className={'rounded-md border-[1.5px] px-2 py-2.5 min-h-[48px] text-[12px] font-semibold ' + (act ? 'bg-quebracho text-white border-quebracho-d' : 'bg-white border-line')}
+                        aria-pressed={act}>{t.etiqueta}</button>
+                    );
+                  })}
+                </div>
+              </Field>
+            </div>
+          </div>
+        )}
+        {patron === 'electrico' && (
+          <div className="flex items-center gap-3 mb-3 rounded-md border border-line bg-canvas-2 p-3 flex-wrap">
+            <span className="text-[14px] font-medium">Hilos electrificados:</span>
+            <Stepper value={params.hilosElec || 2} min={1} max={3} step={1}
+              onChange={(v) => fm.setParam({ hilosElec: v })} format={(v) => v + (v === 1 ? ' hilo' : ' hilos')} />
+            <span className="mono text-[12px] text-muted">1 hilo: 80 cm · 2 hilos: 60/100 · 3 hilos: 40/80/110</span>
+          </div>
+        )}
+
+        {/* modo de varillado */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <span className="text-[13px] text-muted">Varillado:</span>
+          {[
+            { v: 'central', n: 'Varillón central' },
+            { v: 'n', n: 'N varillas por claro' },
+            { v: 'ninguna', n: 'Sin varillas' }
+          ].map((o) => {
+            const act = fm.esquemaParams.varillaModo === o.v;
+            return (
+              <button key={o.v} onClick={() => fm.setEsquema({ varillaModo: o.v })}
+                className={'px-3 rounded-md border-[1.5px] min-h-[44px] text-[13px] font-semibold ' + (act ? 'bg-agro text-white border-agro-deep' : 'bg-white border-line')}
+                aria-pressed={act}>{o.n}</button>
+            );
+          })}
+          {fm.esquemaParams.varillaModo === 'n' && (
+            <span className="inline-flex items-center gap-2">
+              <Stepper value={params.varillasPorClaro ?? 9} min={0} max={20} step={1}
+                onChange={(v) => fm.setParam({ varillasPorClaro: v })} format={(v) => v + ' u.'} />
+              <button onClick={() => fm.setParam({ modoVarillas: params.modoVarillas === 'manga' ? 'comun' : 'manga' })}
+                className={'px-3 rounded-md border-[1.5px] min-h-[44px] text-[13px] font-semibold ' + (params.modoVarillas === 'manga' ? 'bg-quebracho text-white border-quebracho-d' : 'bg-white border-line')}>
+                {params.modoVarillas === 'manga' ? 'Manga 60-100 cm' : 'Común 100-180 cm'}
+              </button>
+            </span>
+          )}
+        </div>
+
+        <CorteReactivo esquema={fm.esquemaDibujo} />
+
+        <div className="mt-3">
+          <EsquemaPlanta metros={metros} replanteo={r.replanteo} tranquerasDetalle={params.tranquerasDetalle} poligono={fm.cerrado} />
+        </div>
       </Card>
 
       {/* ---- 2. parámetros + BOM ---- */}
@@ -268,9 +423,12 @@ export default function Module2() {
             n="01" title="Postes Esquineros & Cabeceras"
             sub={'Quebracho Colorado Labrado 3.00m (3x3" o 4x4")'}
             right={
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge tone="info">{r.esquineros || 0} Vértices GPS</Badge>
-                <span className="mono font-bold text-[15px]">{fmtNum(r.esquineros || 0)} Unidades</span>
+              <div className="text-right">
+                <div className="mono font-bold text-[18px] text-agro">{fmtNum(r.esquineros || 0)} esquineros</div>
+                <div className="mono font-bold text-[15px] text-warn">+ {fmtNum(r.tirantes || 0)} puntales</div>
+                {(r.esqTranquera || 0) > 0 && (
+                  <div className="text-[11px] text-muted mono">({r.esqTranquera} esq. por tranqueras)</div>
+                )}
               </div>
             }
           >
@@ -318,6 +476,69 @@ export default function Module2() {
             </div>
           </NumCard>
 
+          {/* 02b replanteo exacto */}
+          <NumCard
+            n="02B" title="Replanteo Exacto de Postes"
+            sub="Divide la línea en tramos ENTEROS iguales: sin claros más cortos ni más largos"
+            right={
+              <Toggle
+                checked={!!(params.replanteo && params.replanteo.activo)}
+                onChange={(v) => fm.setParam({ replanteo: { ...(params.replanteo || {}), activo: v } })}
+                label={params.replanteo && params.replanteo.activo ? 'Activado' : 'Activar'}
+              />
+            }
+          >
+            {params.replanteo && params.replanteo.activo ? (
+              <div className="flex flex-col gap-3">
+                <div className="grid md:grid-cols-2 gap-x-6">
+                  <SliderRow label="Distancia objetivo entre atadores (2,60 m)" value={params.replanteo.atadoresM || 80}
+                    min={40} max={120} step={1}
+                    onChange={(v) => fm.setParam({ replanteo: { ...params.replanteo, atadoresM: v } })}
+                    format={(v) => v + ' m'} />
+                  <SliderRow label="Distancia objetivo entre palos intermedios" value={params.replanteo.intermediosM || 15}
+                    min={8} max={25} step={0.5}
+                    onChange={(v) => fm.setParam({ replanteo: { ...params.replanteo, intermediosM: v } })}
+                    format={(v) => String(v).replace('.', ',') + ' m'} />
+                </div>
+                {r.replanteo && (
+                  <div className="rounded-md border border-line bg-canvas-2 p-3">
+                    <div className="flex gap-4 flex-wrap mono text-[13px] mb-2">
+                      <span><b className="text-agro">{r.replanteo.atadores.n}</b> tramos de <b>{r.replanteo.atadores.real.toFixed(2).replace('.', ',')} m</b> exactos</span>
+                      <span><b className="text-agro">{r.replanteo.atadores.cantidad}</b> atadores 2,60 m</span>
+                      <span><b className="text-agro">{r.replanteo.intermedios.cantidad}</b> intermedios cada <b>{r.replanteo.intermedios.real.toFixed(2).replace('.', ',')} m</b></span>
+                    </div>
+                    <details>
+                      <summary className="text-[13px] font-semibold text-agro cursor-pointer min-h-[32px]">Ver replanteo tramo por tramo ({r.replanteo.tramos.length})</summary>
+                      <div className="mt-2 max-h-[220px] overflow-y-auto">
+                        <table className="w-full mono text-[12px]">
+                          <thead>
+                            <tr className="text-left text-muted border-b border-line">
+                              <th className="py-1 pr-2">Tramo</th><th className="py-1 pr-2">Desde</th>
+                              <th className="py-1 pr-2">Hasta</th><th className="py-1 pr-2">Interm.</th><th className="py-1">Claro real</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {r.replanteo.tramos.map((t) => (
+                              <tr key={t.tramo} className="border-b border-line/60">
+                                <td className="py-1 pr-2 font-bold">{t.tramo}</td>
+                                <td className="py-1 pr-2">{t.desde.toFixed(1).replace('.', ',')} m</td>
+                                <td className="py-1 pr-2">{t.hasta.toFixed(1).replace('.', ',')} m</td>
+                                <td className="py-1 pr-2">{t.intermedios}</td>
+                                <td className="py-1">{String(t.claroReal).replace('.', ',')} m</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-[13px] text-muted">Activá el replanteo para que atadores e intermedios caigan a distancias exactas e iguales en toda la línea.</div>
+            )}
+          </NumCard>
+
           {/* 03 varillas */}
           <NumCard
             n="03" title="Varillas Intermedias Elásticas"
@@ -344,7 +565,7 @@ export default function Module2() {
           {/* 04 hilos */}
           <NumCard
             n="04" title="Hilos de Alambre & Desperdicio Técnico"
-            sub={fmtM(metros) + ' × ' + (tipo ? tipo.hilos : 7) + ' hilos = ' + fmtM(metros * (tipo ? tipo.hilos : 7)) + ' netos'}
+            sub={fmtM(metros) + ' × ' + he.hilos + ' hilos (' + he.puas + ' púas) = ' + fmtM(metros * he.hilos) + ' netos'}
             right={<div className="text-right"><div className="text-[11px] text-muted">Total con +5% merma:</div><div className="mono font-bold text-[18px] text-agro">{fmtM(mAlambre)}</div></div>}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -394,17 +615,24 @@ export default function Module2() {
             </div>
           </NumCard>
 
-          {/* 06 tranqueras */}
+          {/* 06 tranqueras ubicadas */}
           <NumCard
-            n="06" title="Tranqueras & Accesos Rurales"
-            sub="Accesos de maquinaria pesada y manga"
-            right={<div className="text-[13px] text-muted">Instaladas: <span className="mono font-bold text-[16px] text-ink">{fmtNum(params.tranqueras || 0)} Tranqueras (3.50m)</span></div>}
+            n="06" title="Tranqueras & Tranquerones Ubicados"
+            sub="Posición en metros desde el inicio de la línea · cada una genera 2 postes tipo esquinero + puntales + herrajes"
+            right={
+              <div className="text-right">
+                <div className="mono font-bold text-[18px] text-agro">{(params.tranquerasDetalle || []).length} ubicadas</div>
+                {(r.esqTranquera || 0) > 0 && (
+                  <div className="mono text-[12px] text-warn font-bold">+{r.esqTranquera} esquineros +{params.conTirantes ? r.esqTranquera * 2 : 0} puntales</div>
+                )}
+              </div>
+            }
           >
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-              <div className="text-[14px]">Tranquera Quebracho / Lapacho 3.5m con bisagras reforzadas y pasador traba candado</div>
-              <Stepper value={params.tranqueras || 0} min={0} max={20} step={1}
-                onChange={(v) => fm.setParam({ tranqueras: v })} format={(v) => v} />
-            </div>
+            <TranquerasEditor
+              detalle={params.tranquerasDetalle || []}
+              metros={metros}
+              onChange={(d) => fm.setParam({ tranquerasDetalle: d })}
+            />
           </NumCard>
         </div>
 

@@ -9,6 +9,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { useStore } from '../store.js';
+import { puntoEnDistancia } from '../lib/calc.js';
 
 const ESRI_SAT = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const ESRI_TRANS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}';
@@ -27,6 +28,7 @@ export default function MapView() {
   const vertices = useStore((s) => s.trazado.vertices);
   const cerrado = useStore((s) => s.trazado.cerrado);
   const capa = useStore((s) => s.trazado.capa);
+  const tranquerasDetalle = useStore((s) => s.mat.tranquerasDetalle);
   const addVertice = useStore((s) => s.addVertice);
 
   const modoRef = useRef(modo);
@@ -102,7 +104,20 @@ export default function MapView() {
         radius: 8, color: '#0f172a', weight: 2, fillColor: '#d97706', fillOpacity: 1
       }).bindTooltip('V' + (i + 1), { permanent: false }).addTo(dibujo);
     });
-  }, [vertices, cerrado]);
+    // Tranqueras ubicadas: marcadores sobre la línea a su distancia.
+    (tranquerasDetalle || []).forEach((t, i) => {
+      const p = puntoEnDistancia(vertices, parseFloat(t.pos) || 0);
+      if (!p) return;
+      const esTron = t.tipo === 'tranqueron';
+      L.marker([p.lat, p.lng], {
+        icon: L.divIcon({
+          className: '',
+          html: '<div style="width:26px;height:26px;border-radius:6px;border:2px solid #582f0e;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;background:' + (esTron ? '#b45309' : '#d97706') + '">' + (esTron ? 'Q' : 'T') + '</div>',
+          iconSize: [26, 26], iconAnchor: [13, 13]
+        })
+      }).bindTooltip((esTron ? 'Tranquerón' : 'Tranquera') + ' · ' + Math.round(parseFloat(t.pos) || 0) + ' m', { permanent: false }).addTo(dibujo);
+    });
+  }, [vertices, cerrado, tranquerasDetalle]);
 
   /* --- GPS vivo: agrega posición cada ~5 m --- */
   useEffect(() => {

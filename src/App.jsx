@@ -1,5 +1,6 @@
 /* Shell: header persistente + sidebar (desktop) / bottom nav (mobile) */
 import React, { useEffect, useState } from 'react';
+import { Users, Plus } from 'lucide-react';
 import { useStore } from './store.js';
 import { contarPendientes } from './lib/db.js';
 import { iniciarSyncAutomatica, tursoConfigurado } from './lib/turso.js';
@@ -8,17 +9,21 @@ import Module1 from './components/Module1.jsx';
 import Module2 from './components/Module2.jsx';
 import Module3 from './components/Module3.jsx';
 import Module4 from './components/Module4.jsx';
+import ClientManager from './components/ClientManager.jsx';
+import NewProjectModal from './components/NewProjectModal.jsx';
 
 const MODULOS = [
   { n: 1, titulo: 'Mapeo Topográfico & GIS', sub: 'Haversine, perímetro y ha' },
-  { n: 2, titulo: 'Infraestructura & Hilos', sub: '7 hilos, quebracho y varillas' },
+  { n: 2, titulo: 'Infraestructura & Hilos', sub: 'Corte reactivo, replanteo y BOM' },
   { n: 3, titulo: 'Motor de Costos & Cotización', sub: 'Insumos, mano de obra, WhatsApp' },
   { n: 4, titulo: 'Ejecución & Control', sub: 'Desvíos, auditoría y variance KPIs' }
 ];
 
-function Header() {
-  const nuevaObra = useStore((s) => s.nuevaObra);
+function Header({ onClientes, onNuevaObra }) {
   const obra = useStore((s) => s.obra);
+  const clienteId = useStore((s) => s.clienteId);
+  const clientes = useStore((s) => s.clientes);
+  const cliente = clientes.find((c) => c.id === clienteId);
   const [pendientes, setPendientes] = useState(0);
   useEffect(() => {
     contarPendientes().then(setPendientes).catch(() => {});
@@ -43,13 +48,17 @@ function Header() {
         </div>
         <div className="flex-1" />
         <button
-          onClick={() => { if (window.confirm('¿Crear nuevo lote/obra? Se conserva la actual en el historial.')) nuevaObra(); }}
-          className="hidden sm:inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 border border-white/25 rounded-md px-3 min-h-[44px] text-[14px] font-semibold"
-        >⊕ Nuevo Lote / Obra</button>
+          onClick={onClientes}
+          className="hidden sm:inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/25 rounded-md px-3 min-h-[44px] text-[14px] font-semibold"
+        ><Users size={16} /> Clientes</button>
+        <button
+          onClick={onNuevaObra}
+          className="hidden sm:inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 border border-white/25 rounded-md px-3 min-h-[44px] text-[14px] font-semibold ml-2"
+        ><Plus size={16} /> Nueva obra</button>
         <div className="hidden lg:flex items-center gap-2 ml-2 text-right">
           <div className="leading-tight">
-            <div className="text-[12px] font-semibold">{obra.responsable || 'Contratista'}</div>
-            <div className="text-[10px] opacity-70">Contratista Certificado</div>
+            <div className="text-[12px] font-semibold">{cliente ? cliente.razonSocial : (obra.responsable || 'Contratista')}</div>
+            <div className="text-[10px] opacity-70">{cliente ? 'Cliente activo' : 'Contratista Certificado'}</div>
           </div>
           <div className="w-9 h-9 rounded-full bg-quebracho border border-white/30 flex items-center justify-center font-bold">👤</div>
         </div>
@@ -137,10 +146,17 @@ function StatusBar() {
 
 export default function App() {
   const modulo = useStore((s) => s.modulo);
-  useEffect(() => { iniciarSyncAutomatica(); }, []);
+  const cargarClientes = useStore((s) => s.cargarClientes);
+  const [showClientes, setShowClientes] = useState(false);
+  const [showNuevaObra, setShowNuevaObra] = useState(false);
+  const [clienteFijo, setClienteFijo] = useState(null);
+  useEffect(() => { iniciarSyncAutomatica(); cargarClientes().catch(() => {}); }, []);
   return (
     <div className="h-full flex flex-col">
-      <Header />
+      <Header
+        onClientes={() => setShowClientes(true)}
+        onNuevaObra={() => { setClienteFijo(null); setShowNuevaObra(true); }}
+      />
       <div className="flex-1 flex min-h-0">
         <Sidebar />
         <main className="flex-1 min-w-0 overflow-y-auto pb-20 lg:pb-0">
@@ -154,6 +170,19 @@ export default function App() {
       </div>
       <StatusBar />
       <BottomNav />
+      {showClientes && (
+        <ClientManager
+          onClose={() => setShowClientes(false)}
+          onNuevaObra={(c) => { setShowClientes(false); setClienteFijo(c); setShowNuevaObra(true); }}
+        />
+      )}
+      {showNuevaObra && (
+        <NewProjectModal
+          clienteFijo={clienteFijo}
+          onClose={() => setShowNuevaObra(false)}
+          onCreada={() => setShowNuevaObra(false)}
+        />
+      )}
     </div>
   );
 }
