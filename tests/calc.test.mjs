@@ -9,7 +9,7 @@ import {
   precioKmDesdeConsumo, pesoTotalTn, camionSugerido, refuerzoEfectivoM,
   TIPOS_ALAMBRADO, PARAMS_DEFAULT, contarTorniquetes, atadoresConTorniquete,
   TIPOS_ALAMBRE, tipoAlambre, ESPECIES_MADERA, especieMadera,
-  PRECIOS_TRANQUERAS_DEFAULT, letraComprobante
+  PRECIOS_TRANQUERAS_DEFAULT, letraComprobante, contarTorniquetasAereas, contarPajaritos
 } from '../src/lib/calc.js';
 import { generarPresupuestoPDF, jpegDesdeDataUrl } from '../src/lib/pdf.js';
 import { fmtM2, fechaLocalCorta } from '../src/lib/format.js';
@@ -59,10 +59,12 @@ const porCod = {};
 for (const it of items) porCod[it.codigo] = it.cantidad;
 const esperado = {
   'poste-esquinero': 2, 'poste-refuerzo': 12, 'varilla': 500,
-  'alambre-liso-rollo': 6, 'alambre-pua-rollo': 5, 'torniquete': 21,
-  'grampa': 98, 'tirante': 2, 'varilla-tension': 42
-  // torniquete 21 = 7 hilos × (2 esq + 1 atador cada 10 refuerzos): regla de campo 2026-10-09
+  'alambre-liso-rollo': 6, 'alambre-pua-rollo': 5,
+  'torniqueta-aerea': 7, 'torniqueta-pajarito': 14,
+  'grampa': 98, 'tirante': 2
+  // aéreas 7 = 7 hilos × 1 atador (cada 10 refuerzos); pajaritos 14 = 7 × 2 esq: regla de campo 2026-10-09
   // tirante 2 = 2 esquineros × 1 dirección (regla de campo 2026-10-09)
+  // SIN varilla-tension: las planchuelas no se usan (eliminadas 2026-10-09)
 };
 for (const cod of Object.keys(esperado))
   assert(porCod[cod] === esperado[cod], cod + ' = ' + esperado[cod], 'dio ' + porCod[cod]);
@@ -73,7 +75,9 @@ const c3850 = {};
 for (const it of r3850.items) c3850[it.codigo] = it.cantidad;
 assert(c3850['poste-refuerzo'] === 48, '3850m/80m → 48 refuerzos (diseño)', c3850['poste-refuerzo']);
 assert(c3850['poste-esquinero'] === 4, 'polígono: 4 esquineros');
-assert(c3850['torniquete'] === 56, 'polígono: 56 torniquetes (7×(4 esq+4 atad))', c3850['torniquete']);
+assert(c3850['torniqueta-aerea'] === 28, 'polígono: 28 aéreas (7×4 atad)', c3850['torniqueta-aerea']);
+assert(c3850['torniqueta-pajarito'] === 28, 'polígono: 28 pajaritos (7×4 esq)', c3850['torniqueta-pajarito']);
+assert(c3850['varilla-tension'] === undefined, 'polígono: sin planchuelas en el BOM');
 assert(c3850['varilla'] === 1925, '3850/2 → 1925 varillas');
 // Suelo cañada: refuerzo cada 8 m
 assert(refuerzoEfectivoM(80, 'canada') === 8, "cañada → refuerzo 8 m");
@@ -99,8 +103,8 @@ const preciosTest = [
   { codigo: 'poste-esquinero', precio: 90000 },
   { codigo: 'poste-refuerzo', precio: 28000 },
   { codigo: 'varilla', precio: 1700 },
-  { codigo: 'torniquete', precio: 22000 },
-  { codigo: 'varilla-tension', precio: 3800 },
+  { codigo: 'torniqueta-aerea', precio: 24000 },
+  { codigo: 'torniqueta-pajarito', precio: 12000 },
   { codigo: 'grampa', precio: 80 },
   { codigo: 'alambre-dulce', precio: 950 },
   { codigo: 'tirante', precio: 14000 },
@@ -114,8 +118,8 @@ const proyectoTest = {
   porc: { contingencia: 5, margen: 20 }
 };
 const cot = calcularCotizacion(proyectoTest, preciosTest);
-const matEsp = 6 * 210000 + 5 * 100000 + 2 * 90000 + 12 * 28000 + 500 * 1700 + 21 * 22000 + 42 * 3800 + 98 * 80 + Math.round(7350 * 0.014) * 950 + 2 * 14000;
-// 21 torniquetes (7×(2 esq+1 atad)) y 42 varillas de tensión, regla de campo 2026-10-09
+const matEsp = 6 * 210000 + 5 * 100000 + 2 * 90000 + 12 * 28000 + 500 * 1700 + 7 * 24000 + 14 * 12000 + 98 * 80 + Math.round(7350 * 0.014) * 950 + 2 * 14000;
+// 7 aéreas (7×1 atad) + 14 pajaritos (7×2 esq), regla de campo 2026-10-09; sin planchuelas
 // 2 tirantes (1 por dirección en línea)
 assert(cot.totalMateriales === matEsp, 'total materiales', cot.totalMateriales + ' vs ' + matEsp);
 assert(cot.manoObra.total === 1500000, 'MO 1000m × $1500');
@@ -232,7 +236,9 @@ assert(d3[0].tipo === 'pua' && d3[1].tipo === 'liso', 'púas abajo');
 assert(distribuirAlturas(1, 220, 0)[0].tipo === 'liso' && distribuirAlturas(1, 220, 1)[0].tipo === 'pua', '1 hilo respeta púa');
 const mH3 = calcularMateriales('suspendido7', 1000, { hilos: 3, puas: 1 });
 const cH3 = {}; mH3.items.forEach((i) => cH3[i.codigo] = i.cantidad);
-assert(cH3['torniquete'] === 9, '3 hilos → 9 torniquetes (3×(2 esq+1 atad))');
+assert(cH3['torniqueta-aerea'] === 3, '3 hilos → 3 aéreas (3×1 atad)');
+assert(cH3['torniqueta-pajarito'] === 6, '3 hilos → 6 pajaritos (3×2 esq)');
+assert(cH3['varilla-tension'] === undefined, 'sin planchuelas en el BOM');
 assert(mH3.resumen.hilos === 3 && mH3.resumen.puas === 1, 'resumen hilos/puas');
 assert(cH3['alambre-pua-rollo'] === Math.ceil(1000 * 1 * 1.05 / 500), 'púa: 1000×1×1.05 en rollos de 500');
 const mH7 = calcularMateriales('suspendido7', 1000, {});
@@ -290,7 +296,8 @@ assert(rTrq.esquineros === 4, 'tranquera: +2 esquineros', rTrq.esquineros);
 assert(rTrq.tirantes === 4, 'tranquera: 2 (línea) + 2 (1 por poste)', rTrq.tirantes);
 // Defecto 1: resumen unificado — las tarjetas leen los mismos campos en los 3 patrones
 const CAMPOS = ['esquineros', 'tirantes', 'atadores', 'intermedios', 'varillas',
-  'mLiso', 'mPua', 'rollosLiso', 'rollosPua', 'torniquetes', 'grampas', 'alambreDulceM'];
+  'mLiso', 'mPua', 'rollosLiso', 'rollosPua', 'torniquetes', 'torniquetesAereas',
+  'torniquetesPajarito', 'grampas', 'alambreDulceM'];
 for (const pat of ['suspendido7', 'convencional', 'electrico']) {
   const rr = calcularMateriales(pat, 719, {}).resumen;
   const faltan = CAMPOS.filter((k) => rr[k] === undefined);
@@ -306,10 +313,21 @@ assert(rConvN5.atadores === 11, 'convencional N=5 ajustable: 11 atadores', rConv
 // Defecto 8: torniquetes = hilos × (esquineros_con + atadores_con)
 assert(contarTorniquetes(7, 2, 5, { torniqEsquineros: true }) === 49, 'torniquetes 7×(2+5)=49');
 assert(contarTorniquetes(7, 2, 5, { torniqEsquineros: false }) === 35, 'sin esq: 7×5=35');
-assert(atadoresConTorniquete(5, { torniqCadaAtadores: 2 }, false) === 3, 'cada 2 atadores: ceil(5/2)=3');
-assert(atadoresConTorniquete(12, { cadaNAtadores: 10, torniqCadaAtadores: 1 }, true) === 1, 'clásico: floor(12/10)=1');
+// Regla de campo 2026-10-09: aéreas SOLO en atadores, pajaritos SOLO en esquineros
+assert(contarTorniquetasAereas(7, 5) === 35, 'aéreas: 7×5 atadores');
+assert(contarTorniquetasAereas(7, 0) === 0, 'aéreas: 0 sin atadores');
+assert(contarPajaritos(7, 2, { torniqEsquineros: true }) === 14, 'pajaritos: 7×2 esq');
+assert(contarPajaritos(7, 2, { torniqEsquineros: false }) === 0, 'pajaritos: 0 con toggle OFF');
+assert(contarPajaritos(7, 2, null) === 0, 'pajaritos: 0 sin opts');
 const rT2 = calcularMateriales('suspendido7', 1000, { torniqEsquineros: false }).resumen;
 assert(rT2.torniquetes === 7, 'toggle esq OFF: 7×(0+1)=7', rT2.torniquetes);
+assert(rT2.torniquetesAereas === 7 && rT2.torniquetesPajarito === 0, 'toggle OFF: solo aéreas', JSON.stringify([rT2.torniquetesAereas, rT2.torniquetesPajarito]));
+const rT3 = calcularMateriales('convencional', 719, {}).resumen;
+assert(rT3.torniquetesAereas === 7 * 5 && rT3.torniquetesPajarito === 7 * 2, 'convencional 719m: 35 aéreas + 14 pajaritos', JSON.stringify([rT3.torniquetesAereas, rT3.torniquetesPajarito]));
+const paj = calcularMateriales('convencional', 719, {}).items.find((i) => i.codigo === 'torniqueta-pajarito');
+assert(paj && /agujero \+ tornillo/.test(paj.descripcion) && /alambre de acero/.test(paj.descripcion), 'pajarito: descripción con fijación (agujero+tornillo, alambre de acero)', paj && paj.descripcion);
+assert(atadoresConTorniquete(5, { torniqCadaAtadores: 2 }, false) === 3, 'cada 2 atadores: ceil(5/2)=3');
+assert(atadoresConTorniquete(12, { cadaNAtadores: 10, torniqCadaAtadores: 1 }, true) === 1, 'clásico: floor(12/10)=1');
 // Defecto 7: tipos de alambre y especies de madera
 assert(TIPOS_ALAMBRE.liso.some((t) => t.id === '15-13'), 'liso 15/13 pesado');
 assert(TIPOS_ALAMBRE.pua.some((t) => t.id === '4p') && TIPOS_ALAMBRE.pua.some((t) => t.id === '2p'), 'púas 4 y 2 puntas');

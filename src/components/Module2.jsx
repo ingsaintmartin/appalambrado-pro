@@ -736,18 +736,30 @@ export default function Module2() {
             sub={'Elementos mecánicos de retención calculados para ' + fmtM(metros)}
           >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div className="rounded-md bg-canvas-2 border border-line p-3">
-                <div className="text-[12px] text-muted">{fm.patron === 'electrico' ? 'Tensores' : 'Torniquetes Dobles N°7'}</div>
-                <div className="mono font-bold text-[19px] mt-0.5">{fmtNum(r.torniquetes || 0)} u.</div>
-                <div className="text-[12px] text-muted mono">
-                  {he.hilos} hilos × ({(params.torniqEsquineros ?? true) ? (r.esquineros || 0) + ' esq' : '0 esq'} + {r.atadoresT || 0} atad)
+              {fm.patron === 'electrico' ? (
+                <div className="rounded-md bg-canvas-2 border border-line p-3">
+                  <div className="text-[12px] text-muted">Tensores</div>
+                  <div className="mono font-bold text-[19px] mt-0.5">{fmtNum(r.torniquetes || 0)} u.</div>
+                  <div className="text-[12px] text-muted mono">terminales</div>
                 </div>
-              </div>
-              <div className="rounded-md bg-canvas-2 border border-line p-3">
-                <div className="text-[12px] text-muted">Varillas Tensión</div>
-                <div className="mono font-bold text-[19px] mt-0.5">{fmtNum((r.torniquetes || 0) * 2)} u.</div>
-                <div className="text-[12px] text-muted">Planchuela 1 1/4"</div>
-              </div>
+              ) : (
+                <>
+                  <div className="rounded-md bg-canvas-2 border border-line p-3">
+                    <div className="text-[12px] text-muted">Torniqueta aérea doble</div>
+                    <div className="mono font-bold text-[19px] mt-0.5">{fmtNum(r.torniquetesAereas || 0)} u.</div>
+                    <div className="text-[12px] text-muted mono">
+                      {he.hilos} hilos × {r.atadoresT || 0} atad
+                    </div>
+                  </div>
+                  <div className="rounded-md bg-canvas-2 border border-line p-3">
+                    <div className="text-[12px] text-muted">Torniqueta pajarito</div>
+                    <div className="mono font-bold text-[19px] mt-0.5">{fmtNum(r.torniquetesPajarito || 0)} u.</div>
+                    <div className="text-[12px] text-muted mono">
+                      {(params.torniqEsquineros ?? true) ? he.hilos + ' hilos × ' + (r.esquineros || 0) + ' esq' : 'desactivadas'}
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="rounded-md bg-canvas-2 border border-line p-3">
                 <div className="text-[12px] text-muted">Grampas Galv. 1 1/2"</div>
                 <div className="mono font-bold text-[19px] mt-0.5">{fmtNum(r.grampas || 0)} u.</div>
@@ -764,10 +776,10 @@ export default function Module2() {
                 <Toggle
                   checked={params.torniqEsquineros ?? true}
                   onChange={(v) => fm.setParam({ torniqEsquineros: v })}
-                  label="Torniquetes en esquineros"
+                  label="Pajaritos en esquineros"
                 />
                 <div className="flex items-center gap-2">
-                  <span className="text-[13px] text-muted">Torniquete cada N atadores:</span>
+                  <span className="text-[13px] text-muted">Aérea doble cada N atadores:</span>
                   <Stepper value={params.torniqCadaAtadores ?? 1} min={1} max={10} step={1}
                     onChange={(v) => fm.setParam({ torniqCadaAtadores: v })} format={(v) => 'cada ' + v} />
                 </div>
