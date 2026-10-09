@@ -6,9 +6,8 @@
 import React from 'react';
 
 const COLOR_HILO = { pua: '#b45309', liso: '#2d6a4f', electro: '#2563eb' };
-const ETIQ_CORTO = { pua: 'PÚA', liso: 'LISO', electro: 'ELEC' };
 
-const W = 660, H = 392;
+const W = 660, H = 416;
 const SUELO_Y = 308;
 const POSTE_X0 = 84, POSTE_X1 = 576, POSTE_W = 18;
 const POSTE_PX = 228; // alto en px del palo dibujado
@@ -26,7 +25,15 @@ export default function CorteReactivo({ esquema }) {
   const esVarillon = varillas.modo === 'central';
 
   const distTxt = distPalosM.toFixed(2).replace('.', ',').replace(/,00$/, '') + ' m';
-  const mostrarEtiq = hilos.length <= 7;
+  // Resumen de hilos por tipo (reemplaza las etiquetas laterales que se encimaban).
+  const cuentaTipo = {};
+  hilos.forEach((h) => { cuentaTipo[h.tipo] = (cuentaTipo[h.tipo] || 0) + 1; });
+  const NOM_TIPO = { pua: 'púa', liso: 'liso', electro: 'electro' };
+  const resumenHilos = Object.keys(cuentaTipo).map((t) => cuentaTipo[t] + '× ' + (NOM_TIPO[t] || t)).join(' · ');
+  // Ancho del pill de cota según el texto (la línea se interrumpe, no pasa por debajo).
+  const pillTxt = distTxt + ' ENTRE PALOS';
+  const pillW = Math.max(120, pillTxt.length * 7.6 + 28);
+  const cx = (POSTE_X0 + POSTE_X1) / 2;
 
   return (
     <svg viewBox={'0 0 ' + W + ' ' + H} className="w-full h-auto" role="img" aria-label="Corte longitudinal reactivo del alambrado">
@@ -35,7 +42,7 @@ export default function CorteReactivo({ esquema }) {
       {/* título */}
       <text x="16" y="24" fontSize="13" fontWeight="800" fill="#1b4332">CORTE LONGITUDINAL · {palo.etiqueta.toUpperCase()}</text>
       <text x="16" y="42" fontSize="11" fill="#6b7280">
-        {hilos.length} hilos ({hilos.filter((h) => h.tipo === 'pua').length} púas) · {nVar === 0 ? 'sin varillas' : nVar === 1 && esVarillon ? 'varillón central' : nVar + ' varillas'}
+        {hilos.length} hilos ({resumenHilos}) · {nVar === 0 ? 'sin varillas' : nVar === 1 && esVarillon ? 'varillón central' : nVar + ' varillas'}
       </text>
 
       {/* suelo */}
@@ -90,22 +97,20 @@ export default function CorteReactivo({ esquema }) {
               {mostrarAlt && (
                 <text x="36" y={y + 4} textAnchor="end" fontSize={hilos.length > 7 ? 9 : 11} fontWeight="800" fill={color}>{h.alturaCm}</text>
               )}
-              {mostrarEtiq && (
-                <text x={W - 20} y={y + 4} textAnchor="end" fontSize="9.5" fill="#6b7280">{ETIQ_CORTO[h.tipo]} · {h.alturaCm}cm</text>
-              )}
             </g>
           );
         });
       })()}
-      <text x="36" y={yDe(0) + 4} textAnchor="end" fontSize="10" fill="#9ca3af">cm</text>
+      <text x="36" y={topeY - 12} textAnchor="end" fontSize="10" fill="#9ca3af">cm</text>
 
-      {/* cota de distancia entre palos */}
+      {/* cota de distancia entre palos: la línea se interrumpe donde va el pill */}
       <g>
-        <line x1={POSTE_X0 + POSTE_W / 2} y1={SUELO_Y + 44} x2={POSTE_X1 + POSTE_W / 2} y2={SUELO_Y + 44} stroke="#1b4332" strokeWidth="1.5" />
+        <line x1={POSTE_X0 + POSTE_W / 2} y1={SUELO_Y + 44} x2={cx - pillW / 2 - 4} y2={SUELO_Y + 44} stroke="#1b4332" strokeWidth="1.5" />
+        <line x1={cx + pillW / 2 + 4} y1={SUELO_Y + 44} x2={POSTE_X1 + POSTE_W / 2} y2={SUELO_Y + 44} stroke="#1b4332" strokeWidth="1.5" />
         <line x1={POSTE_X0 + POSTE_W / 2} y1={SUELO_Y + 38} x2={POSTE_X0 + POSTE_W / 2} y2={SUELO_Y + 50} stroke="#1b4332" strokeWidth="1.5" />
         <line x1={POSTE_X1 + POSTE_W / 2} y1={SUELO_Y + 38} x2={POSTE_X1 + POSTE_W / 2} y2={SUELO_Y + 50} stroke="#1b4332" strokeWidth="1.5" />
-        <rect x={(POSTE_X0 + POSTE_X1) / 2 - 62} y={SUELO_Y + 32} width="124" height="24" fill="#1b4332" rx="3" />
-        <text x={(POSTE_X0 + POSTE_X1) / 2} y={SUELO_Y + 49} textAnchor="middle" fontSize="13" fontWeight="800" fill="#fff">{distTxt} ENTRE PALOS</text>
+        <rect x={cx - pillW / 2} y={SUELO_Y + 32} width={pillW} height="24" fill="#1b4332" rx="12" />
+        <text x={cx} y={SUELO_Y + 49} textAnchor="middle" fontSize="13" fontWeight="800" fill="#fff">{pillTxt}</text>
       </g>
 
       {/* varillado */}

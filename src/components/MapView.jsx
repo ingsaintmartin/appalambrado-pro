@@ -9,7 +9,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { useStore } from '../store.js';
-import { puntoEnDistancia } from '../lib/calc.js';
+import { puntoEnDistancia, normalizarTranquera, textoAnchoTranquera } from '../lib/calc.js';
 
 const ESRI_SAT = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const ESRI_TRANS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}';
@@ -107,16 +107,17 @@ export default function MapView() {
     });
     // Tranqueras ubicadas: marcadores sobre la línea a su distancia.
     (tranquerasDetalle || []).forEach((t, i) => {
-      const p = puntoEnDistancia(vertices, parseFloat(t.pos) || 0);
+      const tn = normalizarTranquera(t);
+      const p = puntoEnDistancia(vertices, tn.pos);
       if (!p) return;
-      const esTron = t.tipo === 'tranqueron';
+      const esTron = tn.tipo === 'tranqueron';
       L.marker([p.lat, p.lng], {
         icon: L.divIcon({
           className: '',
           html: '<div style="width:26px;height:26px;border-radius:6px;border:2px solid #582f0e;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;background:' + (esTron ? '#b45309' : '#d97706') + '">' + (esTron ? 'Q' : 'T') + '</div>',
           iconSize: [26, 26], iconAnchor: [13, 13]
         })
-      }).bindTooltip((esTron ? 'Tranquerón' : 'Tranquera') + ' · ' + Math.round(parseFloat(t.pos) || 0) + ' m', { permanent: false }).addTo(dibujo);
+      }).bindTooltip((esTron ? 'Tranquerón' : 'Tranquera') + ' ' + textoAnchoTranquera(tn.anchoM) + ' · ' + Math.round(tn.pos) + ' m', { permanent: false }).addTo(dibujo);
     });
   }, [vertices, cerrado, tranquerasDetalle]);
 

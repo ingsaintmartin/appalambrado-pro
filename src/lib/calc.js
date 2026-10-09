@@ -464,17 +464,18 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     replanteo: null, hilos, puas: 0, postes: esquinerosE + estacones } };
 }
 
-/* Ítems de tranquera/tranquerón: ubicadas con posición, o conteo simple. */
+/* Ítems de tranquera/tranquerón: ubicadas con posición, o conteo simple.
+   Un renglón de BOM por combinación (tipo, ancho) con su ancho real. */
 function itemsTranquerasUbicadas(trq, conteoSimple) {
   const out = [];
   if (trq.cantidad > 0) {
-    for (const tipo of Object.keys(trq.porTipo)) {
-      const posiciones = trq.detalle.filter((t) => (t.tipo === 'tranqueron' ? 'tranqueron' : 'tranquera') === tipo)
-        .map((t) => Math.round(parseFloat(t.pos) || 0) + 'm').join(', ');
-      out.push(item(tipo, trq.porTipo[tipo], (tipo === 'tranqueron' ? '4.50 m' : '3.50 m') + ' en ' + posiciones));
+    for (const k of Object.keys(trq.porTipo)) {
+      const g = trq.porTipo[k];
+      const posiciones = g.posiciones.map((p) => Math.round(p) + 'm').join(', ');
+      out.push(itemTranquera(g.tipo, g.anchoM, g.cantidad, 'en ' + posiciones));
     }
   } else if (conteoSimple > 0) {
-    out.push(item('tranquera', conteoSimple, '3.50 m con bisagras reforzadas'));
+    out.push(itemTranquera('tranquera', 3.5, conteoSimple, 'sin ubicar en línea'));
   }
   return out;
 }
@@ -712,18 +713,110 @@ export function validarVarillas(claroM, varillasPorClaro, modo) {
   };
 }
 
+/* Anchos de tranquera/tranquerón (regla de campo 2026-10-09):
+   - Tranquera: 3,00 / 3,50 / 4,00 m.
+   - Tranquerón: 8 a 15 m en pasos de 1 m.
+   (Antes el selector ofrecía "Tranquerón 4,50 m", que es medida de
+   tranquera, no de tranquerón.) */
+export const ANCHOS_TRANQUERA = [3.0, 3.5, 4.0];
+export const ANCHOS_TRANQUERON = [8, 9, 10, 11, 12, 13, 14, 15];
+export function anchoDefaultTranquera(tipo) {
+  return tipo === 'tranqueron' ? 10 : 3.5;
+}
+export function anchoValidoTranquera(tipo, anchoM) {
+  const a = parseFloat(anchoM);
+  if (isNaN(a)) return false;
+  const lista = tipo === 'tranqueron' ? ANCHOS_TRANQUERON : ANCHOS_TRANQUERA;
+  return lista.some((x) => Math.abs(x - a) < 0.001);
+}
+/* Normaliza una entrada de tranquera (las viejas no traían anchoM). */
+export function normalizarTranquera(t) {
+  const tipo = t && t.tipo === 'tranqueron' ? 'tranqueron' : 'tranquera';
+  let a = parseFloat(t && t.anchoM);
+  if (!anchoValidoTranquera(tipo, a)) a = anchoDefaultTranquera(tipo);
+  return { pos: Math.round((parseFloat(t && t.pos) || 0) * 10) / 10, tipo, anchoM: a };
+}
+/* Inserta una tranquera/tranquerón validada en el detalle. Función pura.
+   - posTexto acepta coma decimal (hábito argentino: "120,5").
+   - Devuelve { ok:true, detalle } o { ok:false, error } (nunca falla en silencio). */
+export function agregarTranquera(detalle, posTexto, tipo, anchoM, L) {
+  const det = (Array.isArray(detalle) ? detalle : []).map(normalizarTranquera);
+  const t = tipo === 'tranqueron' ? 'tranqueron' : 'tranquera';
+  const norma = String(posTexto == null ? '' : posTexto).trim().replace(',', '.');
+  const p = parseFloat(norma);
+  const Lm = Math.max(0, parseFloat(L) || 0);
+  if (norma === '' || isNaN(p)) return { ok: false, error: 'Ingresá la posición en metros desde el inicio.' };
+  if (p < 0 || p > Lm) return { ok: false, error: 'La posición debe estar entre 0 y ' + Math.round(Lm) + ' m.' };
+  const a = parseFloat(String(anchoM == null ? '' : anchoM).replace(',', '.'));
+  if (!anchoValidoTranquera(t, a)) {
+    const lista = (t === 'tranqueron' ? ANCHOS_TRANQUERON : ANCHOS_TRANQUERA).join(' · ').replace(/\./g, ',');
+    return { ok: false, error: 'Ancho no válido. Opciones: ' + lista + ' m.' };
+  }
+  det.push({ pos: Math.round(p * 10) / 10, tipo: t, anchoM: a });
+  det.sort((x, y) => x.pos - y.pos);
+  return { ok: true, detalle: det };
+}
+/* Texto de ancho para BOM/etiquetas: "3,50 m" / "12 m". */
+export function textoAnchoTranquera(anchoM) {
+  const a = parseFloat(anchoM) || 0;
+  return (Number.isInteger(a) ? String(a) : a.toFixed(2).replace('.', ',')) + ' m';
+}
+/* Peso estimado: tranquera de madera dura ≈ 35 kg/m; tranquerón ≈ 45 kg/m
+   (estructura más pesada, doble hoja/herrajes reforzados). Valores medios. */
+export function pesoTranqueraKg(tipo, anchoM) {
+  const a = parseFloat(anchoM) || 0;
+  return Math.round(a * (tipo === 'tranqueron' ? 45 : 35) * 10) / 10;
+}
+/* Precio de referencia ARS (oct-2026): escala lineal desde la base 3,50 m = $387.000
+   (tranquera) y tranquerón ≈ $115.000/m. Ajustar con el proveedor habitual. */
+export function precioDefaultTranquera(tipo, anchoM) {
+  const a = parseFloat(anchoM) || 0;
+  const base = tipo === 'tranqueron' ? 115000 * a : 387000 * (a / 3.5);
+  return Math.round(base / 1000) * 1000;
+}
+/* Ítem de BOM para tranquera/tranquerón con ancho real. Código único por ancho
+   (ej. 'tranquera-350') para que el precio unitario sea configurable por medida. */
+export function itemTranquera(tipo, anchoM, cantidad, detalle) {
+  const t = tipo === 'tranqueron' ? 'tranqueron' : 'tranquera';
+  const a = parseFloat(anchoM) || anchoDefaultTranquera(t);
+  const codigo = (t === 'tranqueron' ? 'tranqueron-' : 'tranquera-') + String(Math.round(a * 100));
+  return {
+    codigo,
+    display: (t === 'tranqueron' ? 'TRQN-' : 'TRQ-') + String(Math.round(a * 100)),
+    descripcion: (t === 'tranqueron' ? 'Tranquerón' : 'Tranquera') + ' ' + textoAnchoTranquera(a) + ' c/herrajes',
+    unidad: 'u',
+    cantidad,
+    detalle: detalle || '',
+    pesoKg: Math.round(pesoTranqueraKg(t, a) * cantidad * 10) / 10
+  };
+}
+/* Precios por defecto para cada código de tranquera (para el store). */
+export const PRECIOS_TRANQUERAS_DEFAULT = (() => {
+  const o = {};
+  ANCHOS_TRANQUERA.forEach((a) => {
+    o['tranquera-' + Math.round(a * 100)] = precioDefaultTranquera('tranquera', a);
+  });
+  ANCHOS_TRANQUERON.forEach((a) => {
+    o['tranqueron-' + Math.round(a * 100)] = precioDefaultTranquera('tranqueron', a);
+  });
+  return o;
+})();
+
 /* Materiales aportados por tranqueras/tranquerones ubicados:
    cada uno genera 2 postes tipo esquinero en ese punto
-   (+ 4 puntales si van con tirantes) + sus herrajes. */
+   (+ 1 puntal por poste si van con tirantes) + sus herrajes.
+   porTipo: { 'tranquera|3.5': { tipo, anchoM, cantidad, posiciones[] } } */
 export function materialesTranqueras(tranquerasDetalle, conTirantes) {
-  const det = Array.isArray(tranquerasDetalle) ? tranquerasDetalle : [];
+  const det = (Array.isArray(tranquerasDetalle) ? tranquerasDetalle : []).map(normalizarTranquera);
   const esquineros = det.length * 2;
   // 1 puntal por poste de tranquera (el hilo tensa de un solo lado).
   const tirantes = conTirantes ? esquineros : 0;
   const porTipo = {};
   det.forEach((t) => {
-    const tipo = t && t.tipo === 'tranqueron' ? 'tranqueron' : 'tranquera';
-    porTipo[tipo] = (porTipo[tipo] || 0) + 1;
+    const k = t.tipo + '|' + t.anchoM;
+    if (!porTipo[k]) porTipo[k] = { tipo: t.tipo, anchoM: t.anchoM, cantidad: 0, posiciones: [] };
+    porTipo[k].cantidad += 1;
+    porTipo[k].posiciones.push(t.pos);
   });
   return { cantidad: det.length, esquineros, tirantes, porTipo, detalle: det };
 }

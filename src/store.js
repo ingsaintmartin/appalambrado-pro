@@ -5,6 +5,7 @@
    en limpio. */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { PRECIOS_TRANQUERAS_DEFAULT } from './lib/calc.js';
 
 export const PRECIOS_DEMO = {
   // Precios de referencia ARS oct-2026 (ver ~/workspace/precios-alambrado-ref-2026-10-09.md).
@@ -19,14 +20,15 @@ export const PRECIOS_DEMO = {
   'varilla-tension': 3800,
   'grampa': 80,
   'alambre-dulce': 950,
-  'tranquera': 387000,            // Tranquera tablas madera 3,5 m
-  'tranqueron': 520000,            // Tranquerón quebracho 4,5 m c/herrajes
+  'tranquera': 387000,            // (compat) Tranquera tablas madera 3,5 m
+  'tranqueron': 520000,            // (compat) código viejo
   'poste-intermedio': 24000,      // Palo intermedio 2,20 m (replanteo exacto)
   'estacon': 8000,                // Estacón itín 1,60 m
   'aislador': 550,                // Aislador ovalado
   'tensor': 4800,                 // Tensor terminal
   'alambre-boyero-rollo': 195000, // Alambre boyero 1,8 mm ×1000 m
-  'tirante': 14000
+  'tirante': 14000,
+  ...PRECIOS_TRANQUERAS_DEFAULT   // tranquera-300/350/400, tranqueron-800…1500
 };
 
 /* Polígono demo ~3,9 km cerca de Trenque Lauquen (los metros
