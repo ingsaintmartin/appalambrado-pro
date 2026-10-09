@@ -14,6 +14,7 @@ const formDe = (empresa) => ({
   tagline: empresa?.tagline || 'Alambrados Rurales',
   razonSocial: empresa?.razonSocial || '',
   cuit: empresa?.cuit || '',
+  condicionFiscal: empresa?.condicionFiscal === 'ri' ? 'ri' : 'monotributo',
   telefono: empresa?.telefono || '',
   email: empresa?.email || '',
   domicilio: empresa?.domicilio || ''
@@ -128,6 +129,31 @@ export default function EmpresaModal({ onClose }) {
           <Field label="CUIT">
             <input className={inputCls} value={form.cuit} onChange={set('cuit')} placeholder="20-12345678-9" inputMode="numeric" />
           </Field>
+          <div>
+            <div className="text-[13px] font-semibold text-muted mb-1.5">Condición fiscal</div>
+            <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Condición fiscal">
+              {[
+                { v: 'monotributo', t: 'Monotributista', sub: 'Factura C' },
+                { v: 'ri', t: 'Resp. Inscripto', sub: 'Factura B o A' }
+              ].map((op) => (
+                <button
+                  key={op.v}
+                  type="button"
+                  role="radio"
+                  aria-checked={form.condicionFiscal === op.v}
+                  onClick={() => setForm((f) => ({ ...f, condicionFiscal: op.v }))}
+                  className={'rounded-md border-[1.5px] px-2 py-2 min-h-[56px] text-left ' +
+                    (form.condicionFiscal === op.v ? 'bg-agro text-white border-agro-deep' : 'bg-white border-line text-ink')}
+                >
+                  <div className="text-[14px] font-semibold">{op.t}</div>
+                  <div className={'text-[12px] ' + (form.condicionFiscal === op.v ? 'text-white/75' : 'text-muted')}>{op.sub}</div>
+                </button>
+              ))}
+            </div>
+            <p className="text-[12px] text-muted mt-1">
+              Monotributista → Factura C (precio final, sin IVA discriminado). Responsable Inscripto → Factura B (sin IVA) o Factura A (con IVA en mano de obra, a elección en el cotizador).
+            </p>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Teléfono / WhatsApp">
               <input className={inputCls} value={form.telefono} onChange={set('telefono')} placeholder="02392 15-..." inputMode="tel" />

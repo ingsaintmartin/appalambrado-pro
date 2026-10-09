@@ -62,6 +62,9 @@ export default function Module3() {
   const faltantes = eng.faltantes || [];
   const dueno = eng.materialesDueno === true;
   const iva = eng.iva || { modo: 'sin', porc: 0, monto: 0 };
+  const condicionFiscal = eng.condicionFiscal || 'monotributo';
+  const letra = eng.letra || 'C';
+  const esRI = condicionFiscal === 'ri';
   const mo = eng.manoObra || { nuevo: 0, desarme: 0, tranqueras: 0, total: 0, detalle: {} };
   const moD = mo.detalle || {};
   const cuadC = { flete: eng.logistica?.flete || 0, viaticos: eng.logistica?.viaticos || 0, total: eng.logistica?.total || 0, detalle: eng.logistica?.detalle || {} };
@@ -80,6 +83,7 @@ export default function Module3() {
   const docPDF = () => ({
     empresa: empresa || undefined,
     numero,
+    letra,
     fecha: fechaLocalCorta(hoy),
     validezDias: 15,
     cliente: { nombre: obra.nombre || '—', campo: obra.lote || '', localidad: obra.localidad || '' },
@@ -117,6 +121,7 @@ export default function Module3() {
     totalMaterialesBruto: eng.totalMaterialesBruto || 0,
     materialesDueno: dueno,
     iva: { modo: iva.modo, porc: iva.porc, monto: iva.monto },
+    letra, condicionFiscal,
     manoObra: { total: mo.total },
     logistica: { total: cuadC.total },
     subtotal: eng.subtotal || 0,
@@ -157,6 +162,7 @@ export default function Module3() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1.5">
             <Chip className="bg-agro text-white border-agro-deep font-bold">{numero}</Chip>
+            <Chip className="bg-quebracho text-white border-quebracho-d font-bold">Factura {letra}</Chip>
             <Chip>Versión R3</Chip>
             <Chip className="text-satblue border-satblue/40">Norma IRAM 7 Hilos</Chip>
           </div>
@@ -256,28 +262,37 @@ export default function Module3() {
           </div>
           <div className="px-4 pb-3">
             <div className="text-[12px] font-semibold text-muted uppercase tracking-wide mb-1.5">IVA sobre mano de obra</div>
-            <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="IVA sobre mano de obra">
-              {[
-                { v: 'sin', t: 'Sin IVA (en B)' },
-                { v: '10.5', t: 'IVA 10,5 %' },
-                { v: '21', t: 'IVA 21 %' }
-              ].map((op) => (
-                <button
-                  key={op.v}
-                  role="radio"
-                  aria-checked={iva.modo === op.v}
-                  onClick={() => eng.setCostos({ ivaModo: op.v })}
-                  className={'rounded-md border-[1.5px] px-2 py-2 min-h-[48px] text-[13px] font-semibold ' +
-                    (iva.modo === op.v ? 'bg-agro text-white border-agro-deep' : 'bg-white border-line text-ink')}
-                >
-                  {op.t}
-                </button>
-              ))}
-            </div>
-            {iva.modo !== 'sin' && (
-              <div className="mono text-[13px] text-muted mt-1.5">
-                IVA {String(iva.porc).replace('.', ',')} % s/ mano de obra: <strong className="text-ink">{fmtARS(iva.monto)}</strong>
+            {!esRI ? (
+              <div className="rounded-md border border-line bg-canvas/60 px-3 py-2.5 text-[13px] text-muted">
+                Monotributista → <strong className="text-ink">Factura C</strong> (precio final, sin IVA discriminado).
+                <span className="block mt-0.5">Para discriminar IVA, cambiá a Responsable Inscripto en <strong className="text-ink">Empresa</strong>.</span>
               </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="IVA sobre mano de obra">
+                  {[
+                    { v: 'sin', t: 'Sin IVA (B)' },
+                    { v: '10.5', t: 'IVA 10,5 % (A)' },
+                    { v: '21', t: 'IVA 21 % (A)' }
+                  ].map((op) => (
+                    <button
+                      key={op.v}
+                      role="radio"
+                      aria-checked={iva.modo === op.v}
+                      onClick={() => eng.setCostos({ ivaModo: op.v })}
+                      className={'rounded-md border-[1.5px] px-2 py-2 min-h-[48px] text-[13px] font-semibold ' +
+                        (iva.modo === op.v ? 'bg-agro text-white border-agro-deep' : 'bg-white border-line text-ink')}
+                    >
+                      {op.t}
+                    </button>
+                  ))}
+                </div>
+                {iva.modo !== 'sin' && (
+                  <div className="mono text-[13px] text-muted mt-1.5">
+                    IVA {String(iva.porc).replace('.', ',')} % s/ mano de obra: <strong className="text-ink">{fmtARS(iva.monto)}</strong>
+                  </div>
+                )}
+              </>
             )}
           </div>
           <div className="px-4 pb-4 flex flex-col gap-3">

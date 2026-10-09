@@ -18,6 +18,10 @@ export const EMPRESA_DEFAULT = {
   telefono: '',
   email: '',
   domicilio: '',
+  // Condición fiscal: 'monotributo' (default) | 'ri' (Responsable Inscripto).
+  // Monotributista → Factura C (sin IVA discriminado).
+  // RI → Factura B (sin IVA) o Factura A (IVA 10,5/21 % en mano de obra).
+  condicionFiscal: 'monotributo',
   logoDataUrl: '' // 'data:image/jpeg;base64,...'
 };
 

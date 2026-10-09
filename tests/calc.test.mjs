@@ -9,7 +9,7 @@ import {
   precioKmDesdeConsumo, pesoTotalTn, camionSugerido, refuerzoEfectivoM,
   TIPOS_ALAMBRADO, PARAMS_DEFAULT, contarTorniquetes, atadoresConTorniquete,
   TIPOS_ALAMBRE, tipoAlambre, ESPECIES_MADERA, especieMadera,
-  PRECIOS_TRANQUERAS_DEFAULT
+  PRECIOS_TRANQUERAS_DEFAULT, letraComprobante
 } from '../src/lib/calc.js';
 import { generarPresupuestoPDF, jpegDesdeDataUrl } from '../src/lib/pdf.js';
 import { fmtM2, fechaLocalCorta } from '../src/lib/format.js';
@@ -399,6 +399,47 @@ assert(buf2.includes('/DCTDecode') && buf2.includes('/ImLogo'), 'PDF: logo JPEG 
 assert(buf2.includes('IVA'), 'PDF: IVA discriminado');
 assert(buf2.includes('719,19 m'), 'PDF: metros con 2 decimales', );
 assert(buf2.includes('provee el due'), 'PDF: aclara materiales del dueño');
+
+console.log('\n== Condición fiscal: letra del comprobante ==');
+assert(letraComprobante('monotributo', 'sin') === 'C', 'monotributista → Factura C');
+assert(letraComprobante('monotributo', '10.5') === 'C', 'monotributista ignora IVA elegido → C');
+assert(letraComprobante('monotributo', '21') === 'C', 'monotributista ignora IVA 21 → C');
+assert(letraComprobante('ri', 'sin') === 'B', 'RI sin IVA → Factura B');
+assert(letraComprobante('ri', '10.5') === 'A', 'RI + IVA 10,5 → Factura A');
+assert(letraComprobante('ri', '21') === 'A', 'RI + IVA 21 → Factura A');
+assert(letraComprobante(undefined, 'sin') === 'C', 'default: monotributista');
+// Monotributista: el PDF no muestra línea de IVA (precio final)
+const blobC = generarPresupuestoPDF({
+  empresa: { nombreFantasia: 'EL ATADOR', condicionFiscal: 'monotributo' },
+  numero: 'AL-2026-002', letra: 'C', fecha: '09/10/2026',
+  cliente: { nombre: 'Cliente Demo' }, tipoNombre: 'Suspendido 7 hilos', metros: 500,
+  materiales: [], totalMateriales: 0,
+  manoObra: { nuevo: 300000, desarme: 0, tranqueras: 0, total: 300000 },
+  logistica: { flete: 0, viaticos: 0, total: 0 },
+  subtotal: 300000, contingencia: { porc: 0, monto: 0 }, margen: { porc: 20, monto: 60000 },
+  iva: { modo: 'sin', porc: 0, monto: 0 }, total: 360000,
+  faltantes: [], observaciones: 'Válido 15 días corridos.'
+});
+const bufC = Buffer.from(await blobC.arrayBuffer());
+assert(bufC.includes('FACTURA C'), 'PDF monotributista: FACTURA C junto al número');
+assert(!bufC.includes('IVA'), 'PDF monotributista: sin línea de IVA');
+assert(bufC.includes('Monotributista'), 'PDF: condición fiscal en encabezado');
+// RI con Factura A: IVA 10,5 % discriminado
+const blobA = generarPresupuestoPDF({
+  empresa: { nombreFantasia: 'EL ATADOR', condicionFiscal: 'ri' },
+  numero: 'AL-2026-003', letra: 'A', fecha: '09/10/2026',
+  cliente: { nombre: 'Cliente Demo' }, tipoNombre: 'Suspendido 7 hilos', metros: 500,
+  materiales: [], totalMateriales: 0,
+  manoObra: { nuevo: 300000, desarme: 0, tranqueras: 0, total: 300000 },
+  logistica: { flete: 0, viaticos: 0, total: 0 },
+  subtotal: 300000, contingencia: { porc: 0, monto: 0 }, margen: { porc: 20, monto: 60000 },
+  iva: { modo: '10.5', porc: 10.5, monto: 31500 }, total: 391500,
+  faltantes: [], observaciones: 'Válido 15 días corridos.'
+});
+const bufA = Buffer.from(await blobA.arrayBuffer());
+assert(bufA.includes('FACTURA A'), 'PDF RI: FACTURA A junto al número');
+assert(bufA.includes('IVA 10,5'), 'PDF RI: IVA 10,5 % discriminado');
+assert(bufA.includes('Responsable Inscripto'), 'PDF: condición fiscal RI en encabezado');
 
 console.log('\n----------------------------------------');
 console.log('Resultado: ' + ok + ' OK, ' + mal + ' FALLIDAS');
