@@ -39,11 +39,12 @@ export default function MapView() {
   /* --- init única --- */
   useEffect(() => {
     if (mapRef.current || !ref.current) return;
-    const map = L.map(ref.current, { zoomControl: true, attributionControl: true }).setView([-35.97, -62.73], 13);
+    const map = L.map(ref.current, { zoomControl: true, attributionControl: true, maxZoom: 19 }).setView([-35.97, -62.73], 13);
     map.attributionControl.setPrefix(false);
     mapRef.current = map;
 
-    const sat = L.tileLayer(ESRI_SAT, { maxZoom: 19 });
+    // Esri satelital: zoom máximo 19 (nativo 19) para trazar con detalle en el campo.
+    const sat = L.tileLayer(ESRI_SAT, { maxZoom: 19, maxNativeZoom: 19 });
     const trans = L.tileLayer(ESRI_TRANS, { maxZoom: 19 });
     const labels = L.tileLayer(ESRI_LABELS, { maxZoom: 19 });
     const grupoSat = L.layerGroup([sat, trans, labels]);

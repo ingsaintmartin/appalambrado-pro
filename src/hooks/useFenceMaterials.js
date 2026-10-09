@@ -53,7 +53,17 @@ export function useFenceMaterials() {
         : null,
       varillasPorClaro: m.replanteo && m.replanteo.activo ? m.varillasPorClaro : null,
       hilos: he.hilos,
-      puas: he.puas
+      puas: he.puas,
+      // Atadores y torniquetes (lógica de campo, ajustable en tarjetas 02 y 05)
+      cadaNAtadores: m.cadaNAtadores,
+      torniqEsquineros: m.torniqEsquineros,
+      torniqCadaAtadores: m.torniqCadaAtadores,
+      // Tipos de alambre y especies de madera (tarjetas 01, 02 y 04)
+      alambreLiso: m.alambreLiso,
+      alambrePua: m.alambrePua,
+      alambreElectro: m.alambreElectro,
+      maderaEsquinero: m.maderaEsquinero,
+      maderaIntermedio: m.maderaIntermedio
     });
     const pesoTn = pesoTotalTn(items);
     // Distancia entre palos para el dibujo: del replanteo si está activo.
