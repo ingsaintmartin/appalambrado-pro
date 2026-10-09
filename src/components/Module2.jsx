@@ -772,9 +772,9 @@ export default function Module2() {
                 <div className="text-[12px] text-muted mono">{grampaKg.toLocaleString('es-AR')} kg · Reforzadas filo</div>
               </div>
               <div className="rounded-md bg-canvas-2 border border-line p-3">
-                <div className="text-[12px] text-muted">Alambre Dulce N°14</div>
+                <div className="text-[12px] text-muted">Alambre dulce Nº14 · maneas</div>
                 <div className="mono font-bold text-[19px] mt-0.5">{fmtM(r.alambreDulceM || 0)}</div>
-                <div className="text-[12px] text-muted">Ataduras varilla</div>
+                <div className="text-[12px] text-muted">1 manea por varilla × hilo</div>
               </div>
             </div>
             {fm.patron !== 'electrico' && (
@@ -785,7 +785,7 @@ export default function Module2() {
                   label="Pajaritos en esquineros"
                 />
                 <Toggle
-                  checked={params.grampasIntermedios ?? true}
+                  checked={params.grampasIntermedios ?? false}
                   onChange={(v) => fm.setParam({ grampasIntermedios: v })}
                   label="Grampas en postes (fijan el alambre al poste)"
                 />

@@ -9,7 +9,8 @@ import {
   precioKmDesdeConsumo, pesoTotalTn, camionSugerido, refuerzoEfectivoM,
   TIPOS_ALAMBRADO, PARAMS_DEFAULT, contarTorniquetes, atadoresConTorniquete,
   TIPOS_ALAMBRE, tipoAlambre, ESPECIES_MADERA, especieMadera,
-  PRECIOS_TRANQUERAS_DEFAULT, letraComprobante, contarTorniquetasAereas, contarPajaritos
+  PRECIOS_TRANQUERAS_DEFAULT, letraComprobante, contarTorniquetasAereas, contarPajaritos,
+  alambreDulceManeas, detalleManeas
 } from '../src/lib/calc.js';
 import { generarPresupuestoPDF, jpegDesdeDataUrl } from '../src/lib/pdf.js';
 import { fmtM2, fechaLocalCorta } from '../src/lib/format.js';
@@ -61,13 +62,15 @@ const esperado = {
   'poste-esquinero': 2, 'poste-refuerzo': 12, 'varilla': 500,
   'alambre-liso-rollo': 6, 'alambre-pua-rollo': 5,
   'torniqueta-aerea': 7, 'torniqueta-pajarito': 14,
-  'grampa': 98, 'tirante': 2
+  'tirante': 2
   // aéreas 7 = 7 hilos × 1 atador (cada 10 refuerzos); pajaritos 14 = 7 × 2 esq: regla de campo 2026-10-09
   // tirante 2 = 2 esquineros × 1 dirección (regla de campo 2026-10-09)
   // SIN varilla-tension: las planchuelas no se usan (eliminadas 2026-10-09)
+  // SIN grampa por default: el método del alambrador no usa grampas (toggle OFF 2026-10-09)
 };
 for (const cod of Object.keys(esperado))
   assert(porCod[cod] === esperado[cod], cod + ' = ' + esperado[cod], 'dio ' + porCod[cod]);
+assert(porCod['grampa'] === undefined, 'grampa: fuera del BOM por default (toggle OFF)');
 assert(resumen.mLiso === 5250 && resumen.mPua === 2100, 'mLiso/mPua con 5% merma');
 // Diseño: 3850 m / 80 → 48 refuerzos (floor)
 const r3850 = calcularMateriales('suspendido7', 3850, { poligono: true, nVertices: 4 });
@@ -118,8 +121,10 @@ const proyectoTest = {
   porc: { contingencia: 5, margen: 20 }
 };
 const cot = calcularCotizacion(proyectoTest, preciosTest);
-const matEsp = 6 * 210000 + 5 * 100000 + 2 * 90000 + 12 * 28000 + 500 * 1700 + 7 * 24000 + 14 * 12000 + 98 * 80 + Math.round(7350 * 0.014) * 950 + 2 * 14000;
+const matEsp = 6 * 210000 + 5 * 100000 + 2 * 90000 + 12 * 28000 + 500 * 1700 + 7 * 24000 + 14 * 12000 + alambreDulceManeas(500, 7) * 950 + 2 * 14000;
 // 7 aéreas (7×1 atad) + 14 pajaritos (7×2 esq), regla de campo 2026-10-09; sin planchuelas
+// grampas: default OFF 2026-10-09 (método del alambrador: no usa grampas) → 0
+// dulce: 500 varillas × 7 hilos × 0,30 m + 5% = 1103 m (maneas, no el 1,4% viejo)
 // 2 tirantes (1 por dirección en línea)
 assert(cot.totalMateriales === matEsp, 'total materiales', cot.totalMateriales + ' vs ' + matEsp);
 assert(cot.manoObra.total === 1500000, 'MO 1000m × $1500');
@@ -556,6 +561,37 @@ const rGrOn = calcularMateriales('suspendido7', 719, {
 });
 assert(rGrOn.resumen.grampas > 0 && rGrOn.items.some((i) => i.codigo === 'grampa'),
   'grampas on: en el BOM', rGrOn.resumen.grampas);
+// Grampas: default OFF (método del alambrador 2026-10-09: no usa grampas)
+const rGrDef = calcularMateriales('suspendido7', 719, {
+  poligono: false, nVertices: 0, conTirantes: true, tranquerasDetalle: [],
+  hilos: 7, puas: 2, replanteo: null,
+});
+assert(rGrDef.resumen.grampas === 0 && !rGrDef.items.some((i) => i.codigo === 'grampa'),
+  'grampas default: OFF sin pasar el parámetro');
+assert(PARAMS_DEFAULT.grampasIntermedios === false, 'PARAMS_DEFAULT.grampasIntermedios === false');
+
+/* --- Maneas de varillas con alambre dulce (método del alambrador 2026-10-09) --- */
+console.log('\n[Maneas de varillas]');
+assert(alambreDulceManeas(500, 7) === 1103, 'maneas 500×7: 1103 m', alambreDulceManeas(500, 7));
+assert(alambreDulceManeas(0, 7) === 0, 'maneas 0 varillas: 0 m');
+assert(alambreDulceManeas(100, 0) === 0, 'maneas 0 hilos: 0 m');
+assert(alambreDulceManeas(1, 1) === 0, 'maneas 1×1: redondea a 0 m', alambreDulceManeas(1, 1));
+const rMan = calcularMateriales('suspendido7', 1000, { poligono: false, nVertices: 0 });
+const itDulce = rMan.items.find((i) => i.codigo === 'alambre-dulce');
+assert(rMan.resumen.alambreDulceM === 1103, 'suspendido7 1000m: dulce = 1103 m', rMan.resumen.alambreDulceM);
+assert(itDulce && itDulce.unidad === 'm', 'dulce: unidad metros');
+assert(itDulce && /500 varillas × 7 hilos × 0,30 m \+ 5%/.test(itDulce.detalle),
+  'dulce: fórmula visible en el detalle', itDulce && itDulce.detalle);
+assert(itDulce && /maneas de varillas/i.test(itDulce.descripcion),
+  'dulce: descripción "maneas de varillas"', itDulce && itDulce.descripcion);
+const rManC = calcularMateriales('convencional', 1000, {});
+const itDulceC = rManC.items.find((i) => i.codigo === 'alambre-dulce');
+assert(rManC.resumen.alambreDulceM === 1103, 'convencional 1000m: dulce = 1103 m', rManC.resumen.alambreDulceM);
+assert(itDulceC && /500 varillas × 7 hilos × 0,30 m \+ 5%/.test(itDulceC.detalle),
+  'convencional: fórmula visible en el detalle', itDulceC && itDulceC.detalle);
+const rManE = calcularMateriales('electrico', 900, { hilosElec: 2 });
+assert(rManE.resumen.alambreDulceM === 0 && !rManE.items.some((i) => i.codigo === 'alambre-dulce'),
+  'eléctrico: sin varillas → sin dulce');
 
 console.log('\n----------------------------------------');
 console.log('Resultado: ' + ok + ' OK, ' + mal + ' FALLIDAS');
