@@ -23,6 +23,17 @@ db.version(2).stores({
   outbox:         '++seq, createdAt'
 });
 
+/* v3: tabla empresa (perfil del contratista, fila única id='empresa').
+   El logo se guarda como dataURL JPEG (ver lib/empresa.js). */
+db.version(3).stores({
+  proyectos:      'id, estado, updatedAt',
+  precios:        'id, codigo',
+  ejecucion:      'id, proyectoId',
+  clientes:       'id, cuit, updatedAt',
+  empresa:        'id',
+  outbox:         '++seq, createdAt'
+});
+
 export function genId(prefix) {
   const u = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()

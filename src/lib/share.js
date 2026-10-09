@@ -26,7 +26,11 @@ function textoWhatsApp(proyecto, resumen) {
   L.push('📏 Metros: ' + (proyecto.medicion.metros || 0) + ' m' +
     (proyecto.medicion.poligono ? ' (' + (proyecto.medicion.hectareas || 0) + ' ha)' : ''));
   L.push('');
-  L.push('🧰 Materiales: ' + fmtARS(resumen.totalMateriales));
+  if (resumen.materialesDueno) {
+    L.push('🧰 Materiales: los provee el dueño (no cotizados)');
+  } else {
+    L.push('🧰 Materiales: ' + fmtARS(resumen.totalMateriales));
+  }
   L.push('👷 Mano de obra: ' + fmtARS(resumen.manoObra.total));
   L.push('🚚 Logística: ' + fmtARS(resumen.logistica.total));
   L.push('Subtotal: ' + fmtARS(resumen.subtotal));
@@ -34,6 +38,8 @@ function textoWhatsApp(proyecto, resumen) {
     L.push('Contingencia (' + resumen.contingencia.porc + '%): ' + fmtARS(resumen.contingencia.monto));
   if (resumen.margen.monto > 0)
     L.push('Margen (' + resumen.margen.porc + '%): ' + fmtARS(resumen.margen.monto));
+  if (resumen.iva && resumen.iva.modo !== 'sin' && resumen.iva.monto > 0)
+    L.push('IVA ' + String(resumen.iva.porc).replace('.', ',') + '% s/ mano de obra: ' + fmtARS(resumen.iva.monto));
   L.push('💰 *TOTAL: ' + fmtARS(resumen.total) + '*');
   if (resumen.faltantes && resumen.faltantes.length)
     L.push('_Faltan precios de: ' + resumen.faltantes.join(', ') + '_');

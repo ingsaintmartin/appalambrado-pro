@@ -499,8 +499,12 @@ export function precioKmDesdeConsumo(litrosKm, precioLitro) {
   return num(litrosKm) * num(precioLitro);
 }
 
-/* proyecto: { tipo, params, medicion:{metros,poligono,vertices}, mo:{precioM,metrosDesarme,precioDesarme,tranqueras,precioTranquera}, log:{km,precioKm,viaticos}, porc:{contingencia,margen} }
-   preciosLista: [{codigo, precio}] — precio 0/ausente → 'faltantes' (aviso, no $0 silencioso) */
+/* proyecto: { tipo, params, medicion:{metros,poligono,vertices}, mo:{precioM,metrosDesarme,precioDesarme,tranqueras,precioTranquera}, log:{km,precioKm,viaticos}, porc:{contingencia,margen},
+     materialesDueno?: bool (default false en la función pura; la app lo pasa en true),
+     ivaModo?: 'sin' | '10.5' | '21' (default 'sin' en la función pura; la app usa '10.5') }
+   REGLA DE DOMINIO: si materialesDueno=true, los materiales SIGUEN en el BOM
+   (cantidades necesarias) pero NO entran al costo cotizado (totalMateriales=0).
+   El IVA se calcula sobre la mano de obra y se suma al final (discriminado). */
 export function calcularCotizacion(proyecto, preciosLista) {
   const mapa = {};
   for (const p of (preciosLista || [])) mapa[p.codigo] = num(p.precio);
@@ -513,16 +517,19 @@ export function calcularCotizacion(proyecto, preciosLista) {
   }));
 
   const materiales = [];
-  let totalMateriales = 0;
+  let totalMaterialesBruto = 0;
   const faltantes = [];
   for (const it of items) {
     const pu = mapa[it.codigo];
     const tienePrecio = pu !== undefined && pu > 0;
     const costo = tienePrecio ? it.cantidad * pu : 0;
     if (!tienePrecio) faltantes.push(it.codigo);
-    totalMateriales += costo;
+    totalMaterialesBruto += costo;
     materiales.push({ ...it, precioUnit: tienePrecio ? pu : null, costo, sinPrecio: !tienePrecio });
   }
+  // Los materiales los pone el dueño: van al BOM pero no al costo cotizado.
+  const dueno = proyecto.materialesDueno === true;
+  const totalMateriales = dueno ? 0 : totalMaterialesBruto;
 
   const mo = proyecto.mo || {};
   const moNuevo = metros * num(mo.precioM);
@@ -541,10 +548,16 @@ export function calcularCotizacion(proyecto, preciosLista) {
   const contingenciaMonto = subtotal * pCont / 100;
   const baseMargen = subtotal + contingenciaMonto;
   const margenMonto = baseMargen * pMargen / 100;
-  const total = baseMargen + margenMonto;
+
+  // IVA sobre la mano de obra: 'sin' (en B) | '10.5' | '21'
+  const modoIva = proyecto.ivaModo === '10.5' ? '10.5' : proyecto.ivaModo === '21' ? '21' : 'sin';
+  const ivaPorc = modoIva === 'sin' ? 0 : parseFloat(modoIva);
+  const ivaMonto = totalMO * ivaPorc / 100;
+
+  const total = baseMargen + margenMonto + ivaMonto;
 
   return {
-    materiales, totalMateriales,
+    materiales, totalMateriales, totalMaterialesBruto, materialesDueno: dueno,
     manoObra: { nuevo: moNuevo, desarme: moDesarme, tranqueras: moTranqueras, total: totalMO,
       detalle: { metros, precioM: num(mo.precioM), metrosDesarme: num(mo.metrosDesarme),
         precioDesarme: num(mo.precioDesarme), tranqueras: num(mo.tranqueras), precioTranquera: num(mo.precioTranquera) } },
@@ -552,6 +565,7 @@ export function calcularCotizacion(proyecto, preciosLista) {
     subtotal,
     contingencia: { porc: pCont, monto: contingenciaMonto },
     margen: { porc: pMargen, monto: margenMonto },
+    iva: { modo: modoIva, porc: ivaPorc, monto: ivaMonto },
     total, faltantes, tipo: proyecto.tipo, metros,
     pesoTn: pesoTotalTn(items), camion: camionSugerido(pesoTotalTn(items))
   };
