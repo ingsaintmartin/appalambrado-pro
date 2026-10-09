@@ -95,7 +95,7 @@ export const useStore = create(persist((set, get) => ({
     // Atadores y torniquetes (lógica de campo): atador 2,60 m cada N palos;
     // torniquetes en atadores (1 por hilo) y opcionalmente en esquineros.
     cadaNAtadores: 10, torniqEsquineros: true, torniqCadaAtadores: 1,
-    grampasIntermedios: true, margenExtremo: 10,
+    grampasIntermedios: false, margenExtremo: 10, // default OFF 2026-10-09: el método del alambrador no usa grampas (maneas de dulce)
     // Tipos de alambre y especies de madera (selectores en Módulo 2)
     alambreLiso: '17-15', alambrePua: '4p', alambreElectro: 'ep6',
     maderaEsquinero: 'qcolorado', maderaIntermedio: 'qblanco',
