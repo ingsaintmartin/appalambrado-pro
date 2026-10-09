@@ -499,6 +499,15 @@ export function precioKmDesdeConsumo(litrosKm, precioLitro) {
   return num(litrosKm) * num(precioLitro);
 }
 
+/* Letra del comprobante según condición fiscal + IVA elegido:
+   - Monotributista → siempre Factura C (sin IVA discriminado).
+   - Responsable Inscripto + sin IVA → Factura B.
+   - Responsable Inscripto + IVA 10,5/21 → Factura A (IVA discriminado). */
+export function letraComprobante(condicionFiscal, ivaModo) {
+  if (condicionFiscal !== 'ri') return 'C';
+  return ivaModo === '10.5' || ivaModo === '21' ? 'A' : 'B';
+}
+
 /* proyecto: { tipo, params, medicion:{metros,poligono,vertices}, mo:{precioM,metrosDesarme,precioDesarme,tranqueras,precioTranquera}, log:{km,precioKm,viaticos}, porc:{contingencia,margen},
      materialesDueno?: bool (default false en la función pura; la app lo pasa en true),
      ivaModo?: 'sin' | '10.5' | '21' (default 'sin' en la función pura; la app usa '10.5') }

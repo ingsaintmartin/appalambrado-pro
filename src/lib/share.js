@@ -19,6 +19,7 @@ function textoWhatsApp(proyecto, resumen) {
   const L = [];
   L.push('🧱 *PRESUPUESTO DE ALAMBRADO*');
   L.push('AppAlambrado Pro');
+  if (resumen.letra) L.push('Comprobante: Factura ' + resumen.letra);
   L.push('');
   L.push('👤 Cliente: ' + (proyecto.cliente || '—'));
   if (proyecto.campo) L.push('🏡 Campo: ' + proyecto.campo);

@@ -101,8 +101,10 @@ const NEGRO = [0, 0, 0];
 const col = (c) => c.map((v) => v.toFixed(3)).join(' ');
 
 /* doc = {
-     empresa: { nombreFantasia, tagline, razonSocial, cuit, telefono, email, domicilio, logoDataUrl },
-     numero, fecha ('09/10/2026' — string local, nunca ISO),
+     empresa: { nombreFantasia, tagline, razonSocial, cuit, telefono, email, domicilio,
+                condicionFiscal: 'monotributo'|'ri', logoDataUrl },
+     numero, letra: 'C'|'B'|'A' (letra del comprobante junto al número),
+     fecha ('09/10/2026' — string local, nunca ISO),
      cliente: { nombre, campo, telefono, localidad },
      tipoNombre, metros (number), poligono, hectareas,
      materialesDueno: bool,
@@ -126,6 +128,7 @@ function generarPresupuestoPDF(doc) {
   const nombreEmp = emp.nombreFantasia || 'EL ATADOR';
   const tagline = emp.tagline || 'Alambrados Rurales';
   const logo = jpegDesdeDataUrl(emp.logoDataUrl);
+  const condFiscalTxt = emp.condicionFiscal === 'ri' ? 'Responsable Inscripto' : 'Monotributista';
 
   const paginas = [];
   let cmds = [];
@@ -196,14 +199,18 @@ function generarPresupuestoPDF(doc) {
   const rsCuit = [emp.razonSocial, emp.cuit ? 'CUIT ' + emp.cuit : ''].filter(Boolean).join(' · ');
   let yEmp = y - 40;
   if (rsCuit) { txy(rsCuit, xEmp, yEmp, 9, false, MUTED); yEmp -= 13; }
+  txy(condFiscalTxt, xEmp, yEmp, 9, true, MARRON); yEmp -= 13;
   const contacto = [emp.telefono, emp.email, emp.domicilio].filter(Boolean).join(' · ');
   if (contacto) { txy(contacto, xEmp, yEmp, 9, false, MUTED); yEmp -= 13; }
   y = Math.min(yEmp, y - altoLogo) - 10;
 
-  // Banda de título
+  // Banda de título (con letra del comprobante: C / B / A)
   if (y < MARGEN + 60) nuevaPagina();
   rectFill(MARGEN, y - 36, CW, 36, VERDE);
-  txy('PRESUPUESTO Nº ' + (doc.numero || '—'), MARGEN + 12, y - 25, 14, true, BLANCO);
+  const tituloBanda = doc.letra
+    ? 'FACTURA ' + doc.letra + ' Nº ' + (doc.numero || '—')
+    : 'PRESUPUESTO Nº ' + (doc.numero || '—');
+  txy(tituloBanda, MARGEN + 12, y - 25, 14, true, BLANCO);
   txyR(doc.fecha || '', ANCHO - MARGEN - 12, y - 23, 11, true, BLANCO);
   y -= 48;
 
