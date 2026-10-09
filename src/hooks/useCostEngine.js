@@ -35,12 +35,13 @@ export function useCostEngine() {
     const proyecto = {
       tipo: mat.patron,
       params: {
-        suelo: mat.suelo, conTirantes: mat.conTirantes, tranqueras: mat.tranqueras,
+        suelo: mat.suelo, conTirantes: mat.conTirantes,
+        tranquerasDetalle: mat.tranquerasDetalle || [],
         hilosElec: mat.hilosElec, refuerzoCadaM: mat.distRefuerzo, sepVarillas: mat.sepVarillas
       },
       medicion: { metros, poligono: cerrado, vertices: v },
       mo: { precioM: costos.precioM, metrosDesarme: costos.metrosDesarme, precioDesarme: costos.precioDesarme,
-        tranqueras: mat.tranqueras, precioTranquera: costos.precioTranquera },
+        tranqueras: (mat.tranquerasDetalle || []).length, precioTranquera: costos.precioTranquera },
       log: { km: costos.fleteKm, precioKm: costos.precioKm, viaticos: costos.viaticos },
       porc: { contingencia: costos.contingencia, margen: costos.margen },
       // Regla de dominio: materiales los pone el dueño (no se cotizan) + IVA configurable.

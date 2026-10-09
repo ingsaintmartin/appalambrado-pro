@@ -43,7 +43,6 @@ export function useFenceMaterials() {
       nVertices: v.length,
       suelo: m.suelo,
       conTirantes: m.conTirantes,
-      tranqueras: m.tranqueras,
       tranquerasDetalle: m.tranquerasDetalle,
       hilosElec: m.hilosElec,
       refuerzoCadaM: m.distRefuerzo,

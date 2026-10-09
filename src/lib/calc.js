@@ -83,7 +83,6 @@ export const PARAMS_DEFAULT = {
   rolloPuaM: 500,
   grampasPorHilo: 1,
   conTirantes: true,
-  tranqueras: 2,
   hilosElec: 2,
   posteConvencionalCadaM: 12,
   posteElectricoCadaM: 30,
@@ -217,7 +216,7 @@ export function refuerzoEfectivoM(baseM, suelo) {
 }
 
 /* Calcula materiales para `metros` lineales.
-   opts: { poligono, nVertices, suelo, conTirantes, tranqueras, hilosElec, refuerzoCadaM, sepVarillas }
+   opts: { poligono, nVertices, suelo, conTirantes, tranquerasDetalle, hilosElec, refuerzoCadaM, sepVarillas }
    Devuelve { items, resumen }. Función pura. */
 /* Ítem de alambre con tipo seleccionado (display/descripción/rollo según tipo). */
 function itemAlambre(codigo, categoria, tipoId, cantidadRollos, metrosTotales) {
@@ -352,7 +351,7 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     // Tirantes dobles de contención por esquinero (si aplica).
     if (tirantes > 0) items.push(itemTirante(tirantes));
     // Tranqueras ubicadas (con posición) o conteo simple.
-    items.push(...itemsTranquerasUbicadas(trq, o.tranqueras));
+    items.push(...itemsTranquerasUbicadas(trq));
 
     /* Resumen unificado: ÚNICA fuente de verdad para tarjetas, BOM y dibujo.
        Las tres ramas devuelven los mismos campos (0 donde no aplica). */
@@ -419,7 +418,7 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     gC.pesoKgDetalle = Math.round(grampas * (PESO_KG.grampa || 0.02) * 10) / 10;
     items.push(gC);
     items.push(item('alambre-dulce', Math.round(mAl * 0.014), 'ataduras'));
-    items.push(...itemsTranquerasUbicadas(trq, o.tranqueras));
+    items.push(...itemsTranquerasUbicadas(trq));
     // Resumen unificado (misma forma que suspendido7): única fuente de verdad.
     return { items, resumen: { esquineros, tirantes, atadores, intermedios, refuerzos: atadores,
       varillas, mLiso: Math.round(mAl), mPua: 0, rollosLiso, rollosPua: 0,
@@ -453,7 +452,7 @@ export function calcularMateriales(tipo, metros, opts = {}) {
   // Tensores: 1 por hilo en cada punto de tensión (misma lógica que torniquetes).
   const tensores = contarTorniquetes(hilos, esquinerosE, 0, o);
   items.push(item('tensor', tensores, 'terminales'));
-  items.push(...itemsTranquerasUbicadas(trqE, o.tranqueras));
+  items.push(...itemsTranquerasUbicadas(trqE));
   // Resumen unificado (misma forma que las otras ramas): única fuente de verdad.
   return { items, resumen: { esquineros: esquinerosE, tirantes: tirantesE, atadores: 0,
     intermedios: estacones, refuerzos: 0, varillas: 0,
@@ -464,9 +463,11 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     replanteo: null, hilos, puas: 0, postes: esquinerosE + estacones } };
 }
 
-/* Ítems de tranquera/tranquerón: ubicadas con posición, o conteo simple.
+/* Ítems de tranquera/tranquerón: ÚNICA fuente de verdad = tranquerasDetalle
+   (las ubicadas por el usuario). Sin ubicadas → sin ítems: ninguna tranquera
+   se agrega automáticamente (regla de campo 2026-10-09).
    Un renglón de BOM por combinación (tipo, ancho) con su ancho real. */
-function itemsTranquerasUbicadas(trq, conteoSimple) {
+function itemsTranquerasUbicadas(trq) {
   const out = [];
   if (trq.cantidad > 0) {
     for (const k of Object.keys(trq.porTipo)) {
@@ -474,8 +475,6 @@ function itemsTranquerasUbicadas(trq, conteoSimple) {
       const posiciones = g.posiciones.map((p) => Math.round(p) + 'm').join(', ');
       out.push(itemTranquera(g.tipo, g.anchoM, g.cantidad, 'en ' + posiciones));
     }
-  } else if (conteoSimple > 0) {
-    out.push(itemTranquera('tranquera', 3.5, conteoSimple, 'sin ubicar en línea'));
   }
   return out;
 }

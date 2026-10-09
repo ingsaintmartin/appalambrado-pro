@@ -4,7 +4,10 @@
    (en Vercel: variables de entorno del proyecto nuevo). */
 import { db } from './db.js';
 
-const URL = (import.meta.env.VITE_TURSO_URL || '').replace(/\/$/, '');
+/* La URL puede venir como libsql:// (formato que entrega Turso); el pipeline
+   HTTP necesita https:// — se normaliza acá. Sin esto, fetch() tira por el
+   esquema inválido, el sync falla siempre y el outbox queda con PEND eterno. */
+const URL = (import.meta.env.VITE_TURSO_URL || '').replace(/\/$/, '').replace(/^libsql:\/\//i, 'https://');
 const TOKEN = import.meta.env.VITE_TURSO_TOKEN || '';
 export const tursoConfigurado = !!(URL && TOKEN);
 
