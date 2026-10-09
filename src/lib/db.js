@@ -12,6 +12,17 @@ db.version(1).stores({
   outbox:         '++seq, createdAt'
 });
 
+/* v2: tabla clientes (gestor de clientes).
+   establecimientos y obrasRealizadas van como JSON TEXT,
+   igual que los demás campos compuestos del esquema. */
+db.version(2).stores({
+  proyectos:      'id, estado, updatedAt',
+  precios:        'id, codigo',
+  ejecucion:      'id, proyectoId',
+  clientes:       'id, cuit, updatedAt',
+  outbox:         '++seq, createdAt'
+});
+
 export function genId(prefix) {
   const u = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()

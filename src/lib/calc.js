@@ -92,7 +92,8 @@ export const PARAMS_DEFAULT = {
 /* Códigos de display para el BOM (estilo POST-QBR, VAR-CUR) */
 const DISPLAY = {
   'poste-esquinero':   ['POST-QBR-300', 'Poste Esquinero 3.00m + Tirantes', 'u'],
-  'poste-refuerzo':    ['POST-REF-220', 'Poste Intermedio Quebracho 2.20m', 'u'],
+  'poste-refuerzo':    ['POST-REF-260', 'Atador / Refuerzo 2.60m', 'u'],
+  'poste-intermedio':  ['POST-INT-220', 'Palo Intermedio 2.20m (replanteo exacto)', 'u'],
   'poste-quebracho':   ['POST-QBR-220', 'Poste Quebracho 2.20m', 'u'],
   'varilla':           ['VAR-CUR-140', 'Varillas Curupay 7 orificios', 'u'],
   'alambre-liso-rollo':['ALM-1715-1K', 'Rollo Liso 17/15 x 1000m', 'rollo'],
@@ -104,6 +105,7 @@ const DISPLAY = {
   'grampa-kg':         ['GRP-GLV-KG', 'Grampas Galv. 1 1/2" Reforzadas', 'kg'],
   'alambre-dulce':     ['ALD-14', 'Alambre Dulce N°14 (ataduras)', 'm'],
   'tranquera':         ['TRQ-QBR-350', 'Tranquera Quebracho 3.50m c/herrajes', 'u'],
+  'tranqueron':        ['TRQ-QBR-450', 'Tranquerón Quebracho 4.50m c/herrajes', 'u'],
   'estacon':           ['EST-ITN-160', 'Estacón Itín 1.60m', 'u'],
   'aislador':          ['AIS-OVL', 'Aisladores Rígidos Ovoides', 'u'],
   'tensor':            ['TNS-TRM', 'Tensores Terminales', 'u']
@@ -111,10 +113,10 @@ const DISPLAY = {
 
 /* Peso estimado por unidad (kg) para cubicaje/logística */
 const PESO_KG = {
-  'poste-esquinero': 85, 'poste-refuerzo': 40, 'poste-quebracho': 40,
+  'poste-esquinero': 85, 'poste-refuerzo': 55, 'poste-intermedio': 32, 'poste-quebracho': 40,
   'varilla': 0.9, 'alambre-liso-rollo': 82, 'alambre-pua-rollo': 45,
   'alambre-boyero-rollo': 40, 'torniquete': 0.4, 'varilla-tension': 1.2,
-  'grampa': 0.02, 'alambre-dulce': 0.05, 'tranquera': 120,
+  'grampa': 0.02, 'alambre-dulce': 0.05, 'tranquera': 120, 'tranqueron': 180,
   'estacon': 12, 'aislador': 0.05, 'tensor': 0.3
 };
 
@@ -149,32 +151,63 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     : o.suelo === 'tosca' ? 'tosca dura: requiere barreno' : '';
 
   if (tipo === 'suspendido7') {
-    const T = TIPOS_ALAMBRADO.suspendido7;
-    // Esquineros: 2 en línea (extremos); 1 por vértice en polígono.
-    const esquineros = poligono ? nV : 2;
-    items.push(item('poste-esquinero', esquineros, poligono ? nV + ' vértices GPS' : '2 extremos de línea'));
-    if (o.conTirantes) items.push(item('varilla-tension', 0, '')); // placeholder, se reemplaza abajo
-    const tirantes = o.conTirantes ? esquineros * 2 : 0;
-    // Refuerzos: floor(L / cada) — 3850/80 → 48 u. (diseño)
-    const refuerzos = Math.floor(L / refCada);
-    items.push(item('poste-refuerzo', refuerzos, 'cada ' + refCada + ' m' + (notaSuelo ? ' · ' + notaSuelo : '')));
-    // Varillas: redondeo al entero más cercano.
-    const varillas = Math.round(L / o.sepVarillas);
-    items.push(item('varilla', varillas, 'cada ' + o.sepVarillas.toFixed(1) + ' m'));
-    // Alambre: L × hilos × (1+merma) → rollos SIEMPRE hacia arriba.
-    const mLiso = L * T.lisos * (1 + o.desperdicio);
+    // Hilos efectivos: lo que muestra el corte reactivo es lo que se computa.
+    // Default tradicional: 7 hilos (1 púa abajo + 6 lisos).
+    const nHilos = Math.min(10, Math.max(1, Math.round(o.hilos) || 7));
+    const nPuas = Math.min(nHilos, Math.max(0, o.puas != null ? Math.round(o.puas) : 2));
+    const T = { ...TIPOS_ALAMBRADO.suspendido7, hilos: nHilos };
+    // Alambre: púas + lisos, con desperdicio.
+    const mLiso = L * (nHilos - nPuas) * (1 + o.desperdicio);
+    const mPua = L * nPuas * (1 + o.desperdicio);
     const rollosLiso = Math.ceil(mLiso / o.rolloLisoM);
-    items.push(item('alambre-liso-rollo', rollosLiso, Math.round(mLiso) + ' m ÷ ' + o.rolloLisoM));
-    const mPua = L * T.puas * (1 + o.desperdicio);
     const rollosPua = Math.ceil(mPua / o.rolloPuaM);
+    // Tranqueras ubicadas: 2 postes tipo esquinero por cada una (+ puntales).
+    const trq = materialesTranqueras(o.tranquerasDetalle, o.conTirantes);
+    // Esquineros: 2 en línea (extremos); 1 por vértice en polígono; + los de tranqueras.
+    const esquineros = (poligono ? nV : 2) + trq.esquineros;
+    const detEsq = (poligono ? nV + ' vértices GPS' : '2 extremos de línea') +
+      (trq.esquineros > 0 ? ' + ' + trq.esquineros + ' por tranqueras' : '');
+    items.push(item('poste-esquinero', esquineros, detEsq));
+    const tirantes = o.conTirantes ? esquineros * 2 : 0;
+    // Replanteo exacto (solo lineal): atadores 2.60m + intermedios, todo parejo.
+    const rp = (!poligono && o.replanteo) ? replanteoLinea(L, o.replanteo.atadoresM, o.replanteo.intermediosM) : null;
+    let refuerzos, notaRef;
+    if (rp) {
+      refuerzos = rp.atadores.cantidad;
+      notaRef = 'atadores 2.60m cada ' + rp.atadores.real.toFixed(1).replace('.', ',') + ' m exactos';
+    } else {
+      // Refuerzos: floor(L / cada) — 3850/80 → 48 u. (diseño)
+      refuerzos = Math.floor(L / refCada);
+      notaRef = 'cada ' + refCada + ' m' + (notaSuelo ? ' · ' + notaSuelo : '');
+    }
+    items.push(item('poste-refuerzo', refuerzos, notaRef));
+    if (rp && rp.intermedios.cantidad > 0) {
+      items.push(item('poste-intermedio', rp.intermedios.cantidad,
+        'cada ' + rp.intermedios.real.toFixed(2).replace('.', ',') + ' m exactos (' + rp.atadores.n + ' tramos)'));
+    }
+    // Varillas: con replanteo, N por claro × claros totales; si no, redondeo clásico.
+    let varillas;
+    if (rp && o.varillasPorClaro != null) {
+      const totalClaros = rp.atadores.n * rp.intermedios.n;
+      varillas = Math.max(0, Math.round(o.varillasPorClaro)) * totalClaros;
+    } else {
+      varillas = Math.round(L / o.sepVarillas);
+    }
+    items.push(item('varilla', varillas,
+      rp ? o.varillasPorClaro + ' por claro × ' + (rp.atadores.n * rp.intermedios.n) + ' claros'
+         : 'cada ' + o.sepVarillas.toFixed(1) + ' m'));
+    // Alambre: L × hilos × (1+merma) → rollos SIEMPRE hacia arriba.
+    // (mLiso/mPua/rollos ya calculados arriba con hilos efectivos)
+    items.push(item('alambre-liso-rollo', rollosLiso, Math.round(mLiso) + ' m ÷ ' + o.rolloLisoM));
     items.push(item('alambre-pua-rollo', rollosPua, Math.round(mPua) + ' m ÷ ' + o.rolloPuaM));
     // Torniquetes: 1 por hilo en cada extremo (polígono: por vértice).
     const torniquetes = poligono ? T.hilos * nV : T.hilos * 2;
     items.push(item('torniquete', torniquetes, poligono ? T.hilos + ' × ' + nV + ' vértices' : T.hilos + ' × 2 extremos'));
     // Varillas de tensión: 2 por torniquete.
     items.push(item('varilla-tension', torniquetes * 2, 'planchuela 1 1/4"'));
-    // Grampas (estimación): 1 por hilo en cada poste.
-    const grampas = (esquineros + refuerzos) * T.hilos * o.grampasPorHilo;
+    // Grampas (estimación): 1 por hilo en cada poste (incluye intermedios del replanteo).
+    const postesConGrampa = esquineros + refuerzos + (rp ? rp.intermedios.cantidad : 0);
+    const grampas = postesConGrampa * T.hilos * o.grampasPorHilo;
     const g = item('grampa', grampas, 'estimación');
     g.pesoKgDetalle = Math.round(grampas * (PESO_KG.grampa || 0.02) * 10) / 10;
     items.push(g);
@@ -182,48 +215,85 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     items.push(item('alambre-dulce', Math.round((mLiso + mPua) * 0.014), 'ataduras de varilla'));
     // Tirantes dobles de contención por esquinero (si aplica).
     if (tirantes > 0) {
-      const t = item('varilla-tension', 0, '');
       // reutilizamos código de tirante como ítem separado
       items.push({ ...item('poste-refuerzo', 0, ''), codigo: 'tirante', display: 'TIR-QBR-240',
         descripcion: 'Tirantes dobles de contención (Quebracho 2.40m)', unidad: 'u',
         cantidad: tirantes, detalle: '2 por esquinero', pesoKg: Math.round(tirantes * 38 * 10) / 10 });
     }
-    // Quitar el placeholder de varilla-tension en cero
-    const idx = items.findIndex(i => i.codigo === 'varilla-tension' && i.cantidad === 0 && !i.detalle);
-    if (idx >= 0) items.splice(idx, 1);
-    if (o.tranqueras > 0) items.push(item('tranquera', o.tranqueras, '3.50 m con bisagras reforzadas'));
+    // Tranqueras ubicadas (con posición) o conteo simple.
+    if (trq.cantidad > 0) {
+      for (const tipo of Object.keys(trq.porTipo)) {
+        const posiciones = trq.detalle.filter((t) => (t.tipo === 'tranqueron' ? 'tranqueron' : 'tranquera') === tipo)
+          .map((t) => Math.round(parseFloat(t.pos) || 0) + 'm').join(', ');
+        items.push(item(tipo, trq.porTipo[tipo], (tipo === 'tranqueron' ? '4.50 m' : '3.50 m') + ' en ' + posiciones));
+      }
+    } else if (o.tranqueras > 0) {
+      items.push(item('tranquera', o.tranqueras, '3.50 m con bisagras reforzadas'));
+    }
 
     const resumen = { esquineros, tirantes, refuerzos, varillas, mLiso: Math.round(mLiso),
       mPua: Math.round(mPua), rollosLiso, rollosPua, torniquetes, grampas,
-      alambreDulceM: Math.round((mLiso + mPua) * 0.014) };
+      alambreDulceM: Math.round((mLiso + mPua) * 0.014),
+      esqTranquera: trq.esquineros, tranquerasDetalle: trq.detalle, replanteo: rp,
+      hilos: nHilos, puas: nPuas };
     return { items, resumen };
   }
 
   if (tipo === 'convencional') {
     const hilos = 7;
+    const trq = materialesTranqueras(o.tranquerasDetalle, o.conTirantes);
     const postes = poligono ? Math.max(3, Math.round(L / o.posteConvencionalCadaM))
       : Math.floor(L / o.posteConvencionalCadaM) + 1;
     items.push(item('poste-quebracho', postes, 'cada ' + o.posteConvencionalCadaM + ' m'));
+    if (trq.esquineros > 0) {
+      items.push(item('poste-esquinero', trq.esquineros, trq.esquineros + ' por tranqueras ubicadas'));
+      if (trq.tirantes > 0) items.push({ ...item('poste-refuerzo', 0, ''), codigo: 'tirante', display: 'TIR-QBR-240',
+        descripcion: 'Tirantes dobles de contención (Quebracho 2.40m)', unidad: 'u',
+        cantidad: trq.tirantes, detalle: '2 por esquinero', pesoKg: Math.round(trq.tirantes * 38 * 10) / 10 });
+    }
     const mAl = L * hilos * (1 + o.desperdicio);
     items.push(item('alambre-liso-rollo', Math.ceil(mAl / o.rolloLisoM), Math.round(mAl) + ' m ÷ ' + o.rolloLisoM));
     items.push(item('torniquete', hilos * 2, hilos + ' × 2 extremos'));
     items.push(item('grampa', postes * hilos * o.grampasPorHilo, 'estimación'));
     items.push(item('alambre-dulce', Math.round(mAl * 0.014), 'ataduras'));
-    if (o.tranqueras > 0) items.push(item('tranquera', o.tranqueras, '3.50 m con bisagras reforzadas'));
-    return { items, resumen: { postes, rollosLiso: Math.ceil(mAl / o.rolloLisoM) } };
+    items.push(...itemsTranquerasUbicadas(trq, o.tranqueras));
+    return { items, resumen: { postes, rollosLiso: Math.ceil(mAl / o.rolloLisoM),
+      esqTranquera: trq.esquineros, tranquerasDetalle: trq.detalle } };
   }
 
   // electrico
   const hilos = Math.min(3, Math.max(1, o.hilosElec || 2));
+  const trqE = materialesTranqueras(o.tranquerasDetalle, o.conTirantes);
   const postes = poligono ? Math.max(3, Math.round(L / o.posteElectricoCadaM))
     : Math.floor(L / o.posteElectricoCadaM) + 1;
   items.push(item('estacon', postes, 'cada ' + o.posteElectricoCadaM + ' m'));
+  if (trqE.esquineros > 0) {
+    items.push(item('poste-esquinero', trqE.esquineros, trqE.esquineros + ' por tranqueras ubicadas'));
+    if (trqE.tirantes > 0) items.push({ ...item('poste-refuerzo', 0, ''), codigo: 'tirante', display: 'TIR-QBR-240',
+      descripcion: 'Tirantes dobles de contención (Quebracho 2.40m)', unidad: 'u',
+      cantidad: trqE.tirantes, detalle: '2 por esquinero', pesoKg: Math.round(trqE.tirantes * 38 * 10) / 10 });
+  }
   const mAl = L * hilos * (1 + o.desperdicio);
   items.push(item('alambre-boyero-rollo', Math.ceil(mAl / o.rolloLisoM), Math.round(mAl) + ' m ÷ ' + o.rolloLisoM));
   items.push(item('aislador', hilos * postes, hilos + ' hilos × ' + postes + ' postes'));
   items.push(item('tensor', poligono ? hilos * nV : hilos * 2, 'terminales'));
-  if (o.tranqueras > 0) items.push(item('tranquera', o.tranqueras, '3.50 m con bisagras reforzadas'));
-  return { items, resumen: { postes, hilos } };
+  items.push(...itemsTranquerasUbicadas(trqE, o.tranqueras));
+  return { items, resumen: { postes, hilos, esqTranquera: trqE.esquineros, tranquerasDetalle: trqE.detalle } };
+}
+
+/* Ítems de tranquera/tranquerón: ubicadas con posición, o conteo simple. */
+function itemsTranquerasUbicadas(trq, conteoSimple) {
+  const out = [];
+  if (trq.cantidad > 0) {
+    for (const tipo of Object.keys(trq.porTipo)) {
+      const posiciones = trq.detalle.filter((t) => (t.tipo === 'tranqueron' ? 'tranqueron' : 'tranquera') === tipo)
+        .map((t) => Math.round(parseFloat(t.pos) || 0) + 'm').join(', ');
+      out.push(item(tipo, trq.porTipo[tipo], (tipo === 'tranqueron' ? '4.50 m' : '3.50 m') + ' en ' + posiciones));
+    }
+  } else if (conteoSimple > 0) {
+    out.push(item('tranquera', conteoSimple, '3.50 m con bisagras reforzadas'));
+  }
+  return out;
 }
 
 /* Peso total y camión sugerido */
@@ -362,4 +432,114 @@ export function fmtDesvio(k) {
   if (!k || k.sinPres) return 's/p';
   const pct = Math.round((k.desvio || 0) * 100);
   return (pct > 0 ? '+' : '') + pct + '%';
+}
+
+/* ============================================================
+   Replanteo exacto de postes (lógica de campo)
+   ------------------------------------------------------------
+   El alambrador define la distancia OBJETIVO entre atadores
+   (postes de 2.60 m) y entre palos intermedios. El motor divide
+   en cantidad ENTERA de tramos para que TODOS los claros queden
+   iguales: n = max(1, round(L / objetivo)), real = L / n.
+   Así no quedan claros más cortos ni más largos.
+   ============================================================ */
+export function replanteoExacto(largoM, objetivoM) {
+  const L = Math.max(0, parseFloat(largoM) || 0);
+  const obj = parseFloat(objetivoM) || 0;
+  if (L <= 0 || obj <= 0) return { n: 0, real: 0, largo: L };
+  const n = Math.max(1, Math.round(L / obj));
+  return { n, real: L / n, largo: L };
+}
+
+/* Replanteo de línea completa:
+   - La línea se divide en n tramos iguales (≈ objetivo atadores).
+   - En cada división interior va 1 atador de 2.60 m
+     (en los 2 extremos van los esquineros, ya contados aparte).
+   - Cada tramo se subdivide en m claros iguales (≈ objetivo
+     intermedios); en cada división interior va 1 palo intermedio.
+   Devuelve también el detalle tramo por tramo para mostrar. */
+export function replanteoLinea(largoM, objAtadoresM, objIntermediosM) {
+  const at = replanteoExacto(largoM, objAtadoresM);
+  const inter = replanteoExacto(at.real, objIntermediosM);
+  const posAtadores = [];
+  for (let i = 0; i <= at.n; i++) posAtadores.push(Math.round(i * at.real * 100) / 100);
+  const intermediosPorTramo = Math.max(0, inter.n - 1);
+  const intermediosTotales = at.n * intermediosPorTramo;
+  const atadores = Math.max(0, at.n - 1); // sin contar los 2 extremos (esquineros)
+  const tramos = posAtadores.slice(0, -1).map((desde, i) => ({
+    tramo: i + 1,
+    desde,
+    hasta: posAtadores[i + 1],
+    largo: Math.round((posAtadores[i + 1] - desde) * 100) / 100,
+    intermedios: intermediosPorTramo,
+    claroReal: Math.round(inter.real * 100) / 100
+  }));
+  return {
+    largo: largoM, atadores: { ...at, cantidad: atadores },
+    intermedios: { ...inter, cantidad: intermediosTotales },
+    posAtadores, tramos
+  };
+}
+
+/* Punto sobre la polilínea a `distM` metros del inicio (para
+   ubicar tranqueras en el mapa). Interpolación lineal entre
+   vértices. Devuelve {lat, lng} o null. */
+export function puntoEnDistancia(vertices, distM) {
+  if (!Array.isArray(vertices) || vertices.length < 2) return null;
+  const d = Math.max(0, parseFloat(distM) || 0);
+  let acc = 0;
+  for (let i = 1; i < vertices.length; i++) {
+    const a = vertices[i - 1], b = vertices[i];
+    const seg = haversineM(a, b);
+    if (acc + seg >= d) {
+      const f = seg === 0 ? 0 : (d - acc) / seg;
+      return { lat: a.lat + (b.lat - a.lat) * f, lng: a.lng + (b.lng - a.lng) * f };
+    }
+    acc += seg;
+  }
+  const ultimo = vertices[vertices.length - 1];
+  return { lat: ultimo.lat, lng: ultimo.lng };
+}
+
+/* ============================================================
+   Regla de varillas (lógica de campo)
+   ------------------------------------------------------------
+   Dado un claro de `claroM` metros y N varillas por claro, el
+   espaciamiento real es claro/(N+1) (las varillas dividen el
+   claro en N+1 segmentos iguales).
+   - Alambrado común: válido entre 100 y 180 cm.
+   - Manga/corral: válido entre 60 y 100 cm (más juntas).
+   ============================================================ */
+export const RANGO_VARILLAS_CM = { comun: [100, 180], manga: [60, 100] };
+
+export function validarVarillas(claroM, varillasPorClaro, modo) {
+  const n = Math.max(0, Math.round(varillasPorClaro || 0));
+  const m = modo === 'manga' ? 'manga' : 'comun';
+  const [min, max] = RANGO_VARILLAS_CM[m];
+  if (n === 0) return { espaciamientoCm: null, ok: true, enRango: true, mensaje: 'Sin varillas en el claro.' };
+  const esp = (parseFloat(claroM) || 0) / (n + 1) * 100;
+  const espR = Math.round(esp * 10) / 10;
+  const ok = esp >= min && esp <= max;
+  return {
+    espaciamientoCm: espR, ok, enRango: ok,
+    mensaje: ok
+      ? `${n} varillas → ${espR} cm entre varillas (rango ${min}–${max} cm ✓)`
+      : `${n} varillas → ${espR} cm: FUERA de rango ${min}–${max} cm — ` +
+        (esp < min ? 'quedan muy juntas, sacá varillas.' : 'quedan muy separadas, agregá varillas.')
+  };
+}
+
+/* Materiales aportados por tranqueras/tranquerones ubicados:
+   cada uno genera 2 postes tipo esquinero en ese punto
+   (+ 4 puntales si van con tirantes) + sus herrajes. */
+export function materialesTranqueras(tranquerasDetalle, conTirantes) {
+  const det = Array.isArray(tranquerasDetalle) ? tranquerasDetalle : [];
+  const esquineros = det.length * 2;
+  const tirantes = conTirantes ? esquineros * 2 : 0;
+  const porTipo = {};
+  det.forEach((t) => {
+    const tipo = t && t.tipo === 'tranqueron' ? 'tranqueron' : 'tranquera';
+    porTipo[tipo] = (porTipo[tipo] || 0) + 1;
+  });
+  return { cantidad: det.length, esquineros, tirantes, porTipo, detalle: det };
 }

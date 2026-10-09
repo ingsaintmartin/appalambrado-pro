@@ -20,6 +20,8 @@ export const PRECIOS_DEMO = {
   'grampa': 80,
   'alambre-dulce': 950,
   'tranquera': 387000,            // Tranquera tablas madera 3,5 m
+  'tranqueron': 520000,            // Tranquerón quebracho 4,5 m c/herrajes
+  'poste-intermedio': 24000,      // Palo intermedio 2,20 m (replanteo exacto)
   'estacon': 8000,                // Estacón itín 1,60 m
   'aislador': 550,                // Aislador ovalado
   'tensor': 4800,                 // Tensor terminal
@@ -43,6 +45,7 @@ const obraDemo = () => ({
   localidad: 'Buenos Aires, AR',
   responsable: 'Ing. Agr. M. Rosales',
   establecimiento: 'Estancia Santa María - Potrero Los Caldenes',
+  tipoTrabajo: 'nuevo-completo',
   demo: true,
   creada: new Date().toISOString()
 });
@@ -54,6 +57,7 @@ const obraVacia = () => ({
   localidad: '',
   responsable: '',
   establecimiento: '',
+  tipoTrabajo: 'nuevo-completo',
   demo: false,
   creada: new Date().toISOString()
 });
@@ -84,7 +88,20 @@ export const useStore = create(persist((set, get) => ({
     usarManual: false, metrosManual: '',
     distRefuerzo: 80, sepVarillas: 2.0,
     conTirantes: true, tranqueras: 2, hilosElec: 2,
-    suelo: 'tierra'
+    suelo: 'tierra',
+    // Tranqueras ubicadas: [{pos (m desde inicio), tipo: 'tranquera'|'tranqueron'}]
+    tranquerasDetalle: [],
+    // Replanteo exacto: divide en tramos enteros iguales (sin claros desparejos)
+    replanteo: { activo: false, atadoresM: 80, intermediosM: 15 },
+    varillasPorClaro: 9,
+    modoVarillas: 'comun', // 'comun' (100-180cm) | 'manga' (60-100cm)
+    // Esquema del cerramiento (corte reactivo): lo que se dibuja = lo que se computa.
+    esquema: {
+      preset: 'tradicional', // 'tradicional' | 'configurable' | 'manga-corral' (suspendido7)
+      hilos: 7, puas: 2,
+      altoPaloCm: 220, tipoPalo: 'Poste intermedio 2.20 m',
+      varillaModo: 'n' // 'central' (varillón) | 'n' (N varillas) | 'ninguna'
+    }
   },
   precios: { ...PRECIOS_DEMO },
   costos: {
@@ -101,6 +118,29 @@ export const useStore = create(persist((set, get) => ({
   setModulo: (modulo) => set({ modulo }),
   setObra: (patch) => set((s) => ({ obra: { ...s.obra, ...patch } })),
   nuevaObra: () => set({ obra: obraVacia(), trazado: trazadoVacio(), ejec: ejecVacia(), resumen: null, modulo: 1 }),
+
+  /* --- clientes (gestor) --- */
+  clientes: [],
+  clienteId: null,
+  setClienteId: (clienteId) => set({ clienteId }),
+  cargarClientes: async () => {
+    const { listarClientes } = await import('./lib/clientes.js');
+    set({ clientes: await listarClientes() });
+  },
+  guardarCliente: async (c) => {
+    const { guardarCliente } = await import('./lib/clientes.js');
+    const reg = await guardarCliente(c);
+    set((s) => ({ clientes: [reg, ...s.clientes.filter((x) => x.id !== reg.id)] }));
+    return reg;
+  },
+  eliminarCliente: async (id) => {
+    const { eliminarCliente } = await import('./lib/clientes.js');
+    await eliminarCliente(id);
+    set((s) => ({
+      clientes: s.clientes.filter((x) => x.id !== id),
+      clienteId: s.clienteId === id ? null : s.clienteId
+    }));
+  },
 
   setTrazado: (patch) => set((s) => ({ trazado: { ...s.trazado, ...patch } })),
   addVertice: (v) => set((s) => {
@@ -135,6 +175,7 @@ export const useStore = create(persist((set, get) => ({
   partialize: (s) => ({
     obra: s.obra, trazado: s.trazado, mat: s.mat, precios: s.precios,
     costos: s.costos, ejec: s.ejec, resumen: s.resumen,
-    numeroPresupuesto: s.numeroPresupuesto, modulo: s.modulo
+    numeroPresupuesto: s.numeroPresupuesto, modulo: s.modulo,
+    clienteId: s.clienteId
   })
 }));

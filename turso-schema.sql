@@ -73,3 +73,21 @@ CREATE TABLE IF NOT EXISTS ejecucion (
   updated_at            INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ejecucion_proyecto ON ejecucion(proyecto_id);
+
+-- v2: gestor de clientes (modelo Client del export AIStudio).
+-- establecimientos y obras_realizadas van como JSON TEXT.
+CREATE TABLE IF NOT EXISTS clientes (
+  id                   TEXT PRIMARY KEY,
+  razon_social         TEXT NOT NULL DEFAULT '',
+  titular              TEXT NOT NULL DEFAULT '',
+  cuit                 TEXT NOT NULL DEFAULT '',
+  telefono             TEXT,
+  email                TEXT,
+  domicilio_fiscal     TEXT,
+  establecimientos     TEXT NOT NULL DEFAULT '[]',
+  obras_realizadas     TEXT NOT NULL DEFAULT '[]',
+  saldo_cuenta_corriente REAL DEFAULT 0,
+  created_at           INTEGER NOT NULL,
+  updated_at           INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_clientes_cuit ON clientes(cuit);

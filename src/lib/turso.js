@@ -50,6 +50,15 @@ export async function subirPendientes(onProgress) {
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(proyecto_id) DO UPDATE SET reales=excluded.reales,dias_reales=excluded.dias_reales,costo_mano_obra_real=excluded.costo_mano_obra_real,km_reales=excluded.km_reales,precio_km_real=excluded.precio_km_real,viaticos_reales=excluded.viaticos_reales,otros_costos=excluded.otros_costos,observaciones=excluded.observaciones,updated_at=excluded.updated_at`,
           [d.id, d.proyectoId, J(d.reales), d.diasReales || null, d.costoManoObraReal || 0, d.kmReales || 0, d.precioKmReal || 0, d.viaticosReales || 0, J(d.otrosCostos), d.observaciones || '', Date.now(), Date.now()]);
+      } else if (op.tabla === 'clientes' && op.op === 'upsert') {
+        const d = op.datos;
+        await tursoQuery(
+          `INSERT INTO clientes (id,razon_social,titular,cuit,telefono,email,domicilio_fiscal,establecimientos,obras_realizadas,saldo_cuenta_corriente,created_at,updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(id) DO UPDATE SET razon_social=excluded.razon_social,titular=excluded.titular,cuit=excluded.cuit,telefono=excluded.telefono,email=excluded.email,domicilio_fiscal=excluded.domicilio_fiscal,establecimientos=excluded.establecimientos,obras_realizadas=excluded.obras_realizadas,saldo_cuenta_corriente=excluded.saldo_cuenta_corriente,updated_at=excluded.updated_at`,
+          [d.id, d.razonSocial || '', d.titular || '', d.cuit || '', d.telefono || '', d.email || '', d.domicilioFiscal || '', J(d.establecimientos || []), J(d.obrasRealizadas || []), d.saldoCuentaCorriente || 0, d.createdAt || Date.now(), Date.now()]);
+      } else if (op.tabla === 'clientes' && op.op === 'delete') {
+        await tursoQuery(`DELETE FROM clientes WHERE id = ?`, [op.id]);
       }
       await db.outbox.delete(op.seq);
       subidos++;
