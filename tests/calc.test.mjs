@@ -17,7 +17,7 @@ import {
   replanteoExacto, replanteoLinea, puntoEnDistancia,
   validarVarillas, materialesTranqueras, agregarTranquera, normalizarTranquera,
   anchoValidoTranquera, anchoDefaultTranquera, itemTranquera,
-  precioDefaultTranquera, textoAnchoTranquera,
+  precioDefaultTranquera, textoAnchoTranquera, clasificarTranquera, aporteTranquera,
   ANCHOS_TRANQUERA, ANCHOS_TRANQUERON
 } from '../src/lib/calc.js';
 import {
@@ -475,7 +475,13 @@ const r1 = calcularMateriales('convencional', 719, {
 const g1 = r1.items.filter(esTranquera);
 assert(g1.length === 1 && g1[0].codigo === 'tranqueron-1000' && g1[0].cantidad === 1,
   'BOM con 1 tranquerón ubicado: exactamente 1 ítem (tranqueron-1000 x1)');
-assert(r1.resumen.esqTranquera === 2, 'tranquerón genera 2 esquineros');
+assert(r1.resumen.esqTranquera === 0 && r1.resumen.tirantesTranquera === 0,
+  'tranquerón en extremo (709/719): +0 esquineros +0 puntales (regla 2026-10-09)');
+const r1m = calcularMateriales('convencional', 719, {
+  tranquerasDetalle: [{ pos: 300, tipo: 'tranquera', anchoM: 3.5 }]
+});
+assert(r1m.resumen.esqTranquera === 2 && r1m.resumen.tirantesTranquera === 2,
+  'tranquera en medio (300/719): +2 esquineros +2 puntales');
 // El cotizador recibe tranquerasDetalle (como lo arma useCostEngine): sin fantasmas,
 // la ubicada aparece y la MO cuenta las ubicadas.
 const cotT = calcularCotizacion({
@@ -499,6 +505,57 @@ assert(rVer.items.filter(esTranquera).length === 1, 'ver: 1 ítem en BOM');
 det = det.filter((t) => !(t.pos === 709 && t.tipo === 'tranqueron'));
 const rDel = calcularMateriales('convencional', 719, { tranquerasDetalle: det });
 assert(rDel.items.filter(esTranquera).length === 0, 'eliminar: BOM sin tranqueras');
+
+console.log('\n----------------------------------------');
+console.log('Resultado: ' + ok + ' OK, ' + mal + ' FALLIDAS');
+
+/* --- Correcciones de campo 2026-10-09: pajaritos, extremo/medio, grampas --- */
+console.log('\n[Correcciones de campo]');
+// BUG: pajaritos en 0 con toggle activo por undefined que pisaba el default
+const rPaj = calcularMateriales('suspendido7', 719, {
+  poligono: false, nVertices: 0, conTirantes: true, tranquerasDetalle: [],
+  hilos: 7, puas: 2, torniqEsquineros: undefined, replanteo: null,
+});
+assert(rPaj.resumen.torniquetesPajarito === 14, 'pajaritos: undefined no pisa el default (7×2=14)', rPaj.resumen.torniquetesPajarito);
+const rPajOff = calcularMateriales('suspendido7', 719, {
+  poligono: false, nVertices: 0, conTirantes: true, tranquerasDetalle: [],
+  hilos: 7, puas: 2, torniqEsquineros: false, replanteo: null,
+});
+assert(rPajOff.resumen.torniquetesPajarito === 0, 'pajaritos: toggle off → 0', rPajOff.resumen.torniquetesPajarito);
+// Caso del usuario: línea 719 m, tranquerón 10 m en 709 → extremo
+assert(clasificarTranquera({ pos: 709, anchoM: 10 }, 719, 10) === 'extremo', 'tranquerón en 709/719 es extremo');
+const apExt = aporteTranquera({ pos: 709, anchoM: 10 }, 719, 10);
+assert(apExt.ubicacion === 'extremo' && apExt.esquineros === 0 && apExt.puntales === 0 && apExt.compartePuntal === true,
+  'extremo pegado al fin: +0 esq +0 puntales (comparte el del esquinero)', JSON.stringify(apExt));
+assert(clasificarTranquera({ pos: 300, anchoM: 3.5 }, 719, 10) === 'medio', 'tranquera en 300/719 es medio');
+const apMed = aporteTranquera({ pos: 300, anchoM: 3.5 }, 719, 10);
+assert(apMed.ubicacion === 'medio' && apMed.esquineros === 2 && apMed.puntales === 2,
+  'medio: +2 esq +2 puntales', JSON.stringify(apMed));
+assert(clasificarTranquera({ pos: 5, anchoM: 3.5 }, 719, 10) === 'extremo', 'margen 10: pos 5 es extremo');
+assert(clasificarTranquera({ pos: 5, anchoM: 3.5 }, 719, 3) === 'medio', 'margen 3: pos 5 es medio (margen ajustable)');
+const rCaso = calcularMateriales('suspendido7', 719, {
+  poligono: false, nVertices: 0, conTirantes: true,
+  tranquerasDetalle: [{ pos: 709, tipo: 'tranqueron', anchoM: 10 }],
+  hilos: 7, puas: 2, margenExtremo: 10, replanteo: null,
+});
+assert(rCaso.resumen.esquineros === 2 && rCaso.resumen.tirantes === 2,
+  'caso usuario: 2 esquineros y 2 puntales en total (no 4)', rCaso.resumen.esquineros + '/' + rCaso.resumen.tirantes);
+assert(rCaso.resumen.esqTranquera === 0 && rCaso.resumen.tirantesTranquera === 0,
+  'caso usuario: +0 esq +0 puntales por la tranquera', JSON.stringify({ e: rCaso.resumen.esqTranquera, t: rCaso.resumen.tirantesTranquera }));
+assert(rCaso.resumen.torniquetesPajarito === 14, 'caso usuario: 14 pajaritos', rCaso.resumen.torniquetesPajarito);
+// Grampas con toggle
+const rGrOff = calcularMateriales('suspendido7', 719, {
+  poligono: false, nVertices: 0, conTirantes: true, tranquerasDetalle: [],
+  hilos: 7, puas: 2, grampasIntermedios: false, replanteo: null,
+});
+assert(rGrOff.resumen.grampas === 0 && !rGrOff.items.some((i) => i.codigo === 'grampa'),
+  'grampas off: fuera del BOM y del resumen');
+const rGrOn = calcularMateriales('suspendido7', 719, {
+  poligono: false, nVertices: 0, conTirantes: true, tranquerasDetalle: [],
+  hilos: 7, puas: 2, grampasIntermedios: true, replanteo: null,
+});
+assert(rGrOn.resumen.grampas > 0 && rGrOn.items.some((i) => i.codigo === 'grampa'),
+  'grampas on: en el BOM', rGrOn.resumen.grampas);
 
 console.log('\n----------------------------------------');
 console.log('Resultado: ' + ok + ' OK, ' + mal + ' FALLIDAS');

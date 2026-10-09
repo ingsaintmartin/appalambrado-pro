@@ -15,7 +15,7 @@ import { fmtM, fmtNum } from '../lib/format.js';
 import { TIPOS_PALO } from '../lib/esquema.js';
 import { TIPOS_ALAMBRE, tipoAlambre, ESPECIES_MADERA, especieMadera } from '../lib/calc.js';
 import {
-  agregarTranquera, normalizarTranquera, textoAnchoTranquera,
+  agregarTranquera, normalizarTranquera, textoAnchoTranquera, aporteTranquera,
   ANCHOS_TRANQUERA, ANCHOS_TRANQUERON, anchoDefaultTranquera
 } from '../lib/calc.js';
 import { Card, Badge, Btn, Chip, SliderRow, Stepper, SectionTitle, Toggle, EmptyState, Field } from './ui.jsx';
@@ -80,12 +80,13 @@ function PrecioInput({ codigo }) {
    quirks de type="number" en mobile/desktop y acepta coma decimal argentina);
    la inserción pasa por agregarTranquera() (pura, testeada) que nunca falla
    en silencio: si algo está mal muestra el error en vez de no hacer nada. */
-function TranquerasEditor({ detalle, metros, onChange }) {
+function TranquerasEditor({ detalle, metros, margen, onChange }) {
   const [pos, setPos] = useState('');
   const [tipo, setTipo] = useState('tranquera');
   const [ancho, setAncho] = useState(String(anchoDefaultTranquera('tranquera')));
   const [error, setError] = useState('');
   const L = Math.max(0, parseFloat(metros) || 0);
+  const mg = Math.max(0, parseFloat(margen) || 0);
   const det = Array.isArray(detalle) ? detalle : [];
   const anchos = tipo === 'tranqueron' ? ANCHOS_TRANQUERON : ANCHOS_TRANQUERA;
 
@@ -139,6 +140,11 @@ function TranquerasEditor({ detalle, metros, onChange }) {
               m desde inicio
             </label>
             <span className="mono text-[11px] text-muted">→ 2 esq. + puntales</span>
+            {(() => { const ap = aporteTranquera(t, L, mg); return (
+              <span className="mono text-[11px] font-bold text-agro">
+                {ap.ubicacion === 'extremo' ? '· extremo' : '· medio'} → +{ap.esquineros} esq +{ap.puntales} puntal{ap.puntales === 1 ? '' : 'es'}{ap.compartePuntal ? ' (el del esquinero)' : ''}
+              </span>
+            ); })()}
             <button onClick={() => quitar(i)} className="ml-auto w-10 h-10 rounded-md border-[1.5px] border-bad/50 text-bad flex items-center justify-center" aria-label="Quitar">
               <Trash2 size={16} />
             </button>
@@ -778,6 +784,11 @@ export default function Module2() {
                   onChange={(v) => fm.setParam({ torniqEsquineros: v })}
                   label="Pajaritos en esquineros"
                 />
+                <Toggle
+                  checked={params.grampasIntermedios ?? true}
+                  onChange={(v) => fm.setParam({ grampasIntermedios: v })}
+                  label="Grampas en postes (fijan el alambre al poste)"
+                />
                 <div className="flex items-center gap-2">
                   <span className="text-[13px] text-muted">Aérea doble cada N atadores:</span>
                   <Stepper value={params.torniqCadaAtadores ?? 1} min={1} max={10} step={1}
@@ -790,19 +801,26 @@ export default function Module2() {
           {/* 06 tranqueras ubicadas */}
           <NumCard
             n="06" title="Tranqueras & Tranquerones Ubicados"
-            sub="Posición en metros desde el inicio de la línea · cada una genera 2 postes tipo esquinero + puntales + herrajes"
+            sub="En el medio: +2 postes tipo esquinero + 2 puntales · En extremo (≤ margen): usa el esquinero existente + 1 puntal"
             right={
               <div className="text-right">
                 <div className="mono font-bold text-[18px] text-agro">{(params.tranquerasDetalle || []).length} ubicadas</div>
-                {(r.esqTranquera || 0) > 0 && (
-                  <div className="mono text-[12px] text-warn font-bold">+{r.esqTranquera} esquineros +{params.conTirantes ? r.esqTranquera : 0} puntales</div>
+                {(params.tranquerasDetalle || []).length > 0 && (
+                  <div className="mono text-[12px] text-warn font-bold">+{r.esqTranquera || 0} esquineros +{r.tirantesTranquera || 0} puntales</div>
                 )}
               </div>
             }
           >
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-[13px] text-muted">Margen de extremo:</span>
+              <Stepper value={params.margenExtremo ?? 10} min={0} max={50} step={1}
+                onChange={(v) => fm.setParam({ margenExtremo: v })} format={(v) => v + ' m'} />
+              <span className="text-[12px] text-muted mono">a ≤ margen del inicio/fin se cuenta en extremo</span>
+            </div>
             <TranquerasEditor
               detalle={params.tranquerasDetalle || []}
               metros={metros}
+              margen={params.margenExtremo ?? 10}
               onChange={(d) => fm.setParam({ tranquerasDetalle: d })}
             />
           </NumCard>
