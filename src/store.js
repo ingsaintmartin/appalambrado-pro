@@ -16,8 +16,9 @@ export const PRECIOS_DEMO = {
   'poste-refuerzo': 28000,        // Poste quebracho ½ reforzado 2,20 m
   'poste-quebracho': 32000,       // Poste quebracho colorado entero 2,20 m
   'varilla': 1700,                // Varilla lapachín/curupay 1,20 m
-  'torniquete': 22000,            // Torniquete doble zincado
-  'varilla-tension': 3800,
+  'torniqueta-aerea': 24000,      // Torniqueta aérea doble (atadores)
+  'torniqueta-pajarito': 12000,   // Torniqueta pajarito (esquineros)
+  'torniquete': 22000,            // (compat) código viejo, ya no se emite
   'grampa': 80,
   'alambre-dulce': 950,
   'tranquera': 387000,            // (compat) Tranquera tablas madera 3,5 m

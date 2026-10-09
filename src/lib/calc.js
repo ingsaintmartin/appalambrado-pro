@@ -140,13 +140,23 @@ export function especieMadera(id) {
 }
 
 /* Torniquetes: 1 por hilo en cada punto de tensión.
-   Puntos = esquineros (si el toggle torniqEsquineros está activo)
-          + atadores con torniquete (ver atadoresConTorniquete).
-   Lógica de campo: el atador es el poste de 2,60 m donde se retensiona
-   la línea; muchos alambradores también ponen torniqueta en esquineros. */
-export function contarTorniquetes(hilos, esquineros, atadoresT, o) {
+   REGLA DE CAMPO (2026-10-09, del alambrador):
+   - En los ATADORES van TORNIQUETAS AÉREAS DOBLES: hilos × atadores con torniquete.
+   - En los ESQUINEROS van PAJARITOS: hilos × esquineros (si el toggle está activo).
+     El pajarito se monta con 1 agujero + tornillo y se ata con alambre de acero
+     (recortes del mismo alambre del alambrado: no se computa alambre extra).
+   - Las "varillas de tensión de planchuela" NO se usan: era un invento de la
+     versión AIStudio y se eliminaron del cálculo (2026-10-09). */
+export function contarTorniquetasAereas(hilos, atadoresT) {
+  return Math.max(0, Math.round(hilos) || 0) * Math.max(0, Math.round(atadoresT) || 0);
+}
+export function contarPajaritos(hilos, esquineros, o) {
   const esq = o && o.torniqEsquineros ? Math.max(0, Math.round(esquineros) || 0) : 0;
-  return Math.max(0, Math.round(hilos) || 0) * (esq + Math.max(0, Math.round(atadoresT) || 0));
+  return Math.max(0, Math.round(hilos) || 0) * esq;
+}
+/* Compat: total de torniquetes (aéreas + pajaritos). */
+export function contarTorniquetes(hilos, esquineros, atadoresT, o) {
+  return contarTorniquetasAereas(hilos, atadoresT) + contarPajaritos(hilos, esquineros, o);
 }
 
 /* Atadores que llevan torniquete.
@@ -173,8 +183,9 @@ const DISPLAY = {
   'alambre-liso-rollo':['ALM-1715-1K', 'Rollo Liso 17/15 x 1000m', 'rollo'],
   'alambre-pua-rollo': ['ALM-PUA-500', 'Púas Super Bagual x 500m', 'rollo'],
   'alambre-boyero-rollo': ['ALM-BOY-1K', 'Alambre Boyero x 1000m', 'rollo'],
-  'torniquete':        ['TRN-D7', 'Torniquetes Dobles N°7 Galvanizados', 'u'],
-  'varilla-tension':   ['VTS-PL14', 'Varillas de Tensión Planchuela 1 1/4"', 'u'],
+  'torniqueta-aerea':   ['TRN-AER-D', 'Torniqueta aérea doble (atadores)', 'u'],
+  'torniqueta-pajarito':['TRN-PAJ', 'Torniqueta pajarito · fijación: 1 agujero + tornillo, atada con alambre de acero (recortes del alambrado)', 'u'],
+  'torniquete':        ['TRN-D7', 'Torniquetes Dobles N°7 Galvanizados', 'u'], // compat: ya no se emite
   'grampa':            ['GRP-GLV-12', 'Grampas Galv. 1 1/2" Reforzadas', 'u'],
   'grampa-kg':         ['GRP-GLV-KG', 'Grampas Galv. 1 1/2" Reforzadas', 'kg'],
   'alambre-dulce':     ['ALD-14', 'Alambre Dulce N°14 (ataduras)', 'm'],
@@ -195,7 +206,8 @@ const DISPLAY = {
 const PESO_KG = {
   'poste-esquinero': 85, 'poste-refuerzo': 55, 'poste-intermedio': 32, 'poste-quebracho': 40,
   'varilla': 0.9, 'alambre-liso-rollo': 48, 'alambre-pua-rollo': 25,
-  'alambre-boyero-rollo': 35, 'torniquete': 0.4, 'varilla-tension': 1.2,
+  'alambre-boyero-rollo': 35, 'torniqueta-aerea': 0.5, 'torniqueta-pajarito': 0.25,
+  'torniquete': 0.4, // compat
   'grampa': 0.02, 'alambre-dulce': 1, 'tranquera': 120, 'tranqueron': 180,
   'estacon': 12, 'aislador': 0.05, 'tensor': 0.3
 };
@@ -330,16 +342,16 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     // Alambre: L × hilos × (1+merma) → rollos SIEMPRE hacia arriba.
     items.push(itemAlambre('alambre-liso-rollo', 'liso', o.alambreLiso, rollosLiso, mLiso));
     if (nPuas > 0) items.push(itemAlambre('alambre-pua-rollo', 'pua', o.alambrePua, rollosPua, mPua));
-    // Torniquetes: 1 por hilo en cada punto de tensión.
+    // Torniquetes (regla de campo 2026-10-09): torniquetas aéreas dobles en
+    // atadores, pajaritos en esquineros (toggle). Sin planchuelas: no se usan.
     // Clásico: cada N refuerzos (default 10 → ~1 cada 800 m, para retensionar).
     // Replanteo: los atadores ya van cada N → torniquete cada K atadores.
     const atadoresT = atadoresConTorniquete(atadores, o, !rp);
-    const torniquetes = contarTorniquetes(nHilos, esquineros, atadoresT, o);
-    const detT = nHilos + ' hilos × (' + (o.torniqEsquineros ? esquineros + ' esq' : '0 esq') +
-      ' + ' + atadoresT + ' atad)';
-    items.push(item('torniquete', torniquetes, detT));
-    // Varillas de tensión: 2 por torniquete.
-    items.push(item('varilla-tension', torniquetes * 2, 'planchuela 1 1/4"'));
+    const aereas = contarTorniquetasAereas(nHilos, atadoresT);
+    const pajaritos = contarPajaritos(nHilos, esquineros, o);
+    if (aereas > 0) items.push(item('torniqueta-aerea', aereas, nHilos + ' hilos × ' + atadoresT + ' atadores'));
+    if (pajaritos > 0) items.push(item('torniqueta-pajarito', pajaritos, nHilos + ' hilos × ' + esquineros + ' esquineros'));
+    const torniquetes = aereas + pajaritos;
     // Grampas (estimación): 1 por hilo en cada poste que sostiene hilo.
     const postesConGrampa = esquineros + atadores + intermedios;
     const grampas = postesConGrampa * T.hilos * o.grampasPorHilo;
@@ -357,7 +369,8 @@ export function calcularMateriales(tipo, metros, opts = {}) {
        Las tres ramas devuelven los mismos campos (0 donde no aplica). */
     const resumen = { esquineros, tirantes, atadores, intermedios, refuerzos: atadores,
       varillas, mLiso: Math.round(mLiso), mPua: Math.round(mPua),
-      rollosLiso, rollosPua, torniquetes, atadoresT, grampas,
+      rollosLiso, rollosPua, torniquetes, torniquetesAereas: aereas, torniquetesPajarito: pajaritos,
+      atadoresT, grampas,
       alambreDulceM: Math.round((mLiso + mPua) * 0.014),
       esqTranquera: trq.esquineros, tranquerasDetalle: trq.detalle, replanteo: rp,
       hilos: nHilos, puas: nPuas, postes: esquineros + atadores + intermedios };
@@ -406,12 +419,14 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     const mAl = L * hilos * (1 + o.desperdicio);
     const rollosLiso = Math.ceil(mAl / tLisoC.rolloM);
     items.push(itemAlambre('alambre-liso-rollo', 'liso', o.alambreLiso, rollosLiso, mAl));
-    // Torniquetes: 1 por hilo en cada punto de tensión (esquineros + atadores).
+    // Torniquetes (regla de campo 2026-10-09): torniquetas aéreas dobles en
+    // atadores, pajaritos en esquineros (toggle). Sin planchuelas: no se usan.
     const atadoresT = atadoresConTorniquete(atadores, o, false);
-    const torniquetes = contarTorniquetes(hilos, esquineros, atadoresT, o);
-    items.push(item('torniquete', torniquetes,
-      hilos + ' hilos × (' + (o.torniqEsquineros ? esquineros + ' esq' : '0 esq') + ' + ' + atadoresT + ' atad)'));
-    items.push(item('varilla-tension', torniquetes * 2, 'planchuela 1 1/4"'));
+    const aereas = contarTorniquetasAereas(hilos, atadoresT);
+    const pajaritos = contarPajaritos(hilos, esquineros, o);
+    if (aereas > 0) items.push(item('torniqueta-aerea', aereas, hilos + ' hilos × ' + atadoresT + ' atadores'));
+    if (pajaritos > 0) items.push(item('torniqueta-pajarito', pajaritos, hilos + ' hilos × ' + esquineros + ' esquineros'));
+    const torniquetes = aereas + pajaritos;
     // Grampas: 1 por hilo en cada poste que sostiene hilo (esquineros + atadores + intermedios).
     const grampas = (esquineros + atadores + intermedios) * hilos * o.grampasPorHilo;
     const gC = item('grampa', grampas, 'estimación');
@@ -422,7 +437,7 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     // Resumen unificado (misma forma que suspendido7): única fuente de verdad.
     return { items, resumen: { esquineros, tirantes, atadores, intermedios, refuerzos: atadores,
       varillas, mLiso: Math.round(mAl), mPua: 0, rollosLiso, rollosPua: 0,
-      torniquetes, atadoresT, grampas, alambreDulceM: Math.round(mAl * 0.014),
+      torniquetes, torniquetesAereas: aereas, torniquetesPajarito: pajaritos, atadoresT, grampas, alambreDulceM: Math.round(mAl * 0.014),
       esqTranquera: trq.esquineros, tranquerasDetalle: trq.detalle, replanteo: rpC,
       hilos, puas: 0, postes: nPos } };
   }
@@ -458,7 +473,7 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     intermedios: estacones, refuerzos: 0, varillas: 0,
     mLiso: 0, mPua: 0, rollosLiso: 0, rollosPua: 0,
     mElectro: Math.round(mAl), rollosElectro: rollosElec,
-    torniquetes: tensores, atadoresT: 0, grampas: 0,
+    torniquetes: tensores, torniquetesAereas: 0, torniquetesPajarito: 0, atadoresT: 0, grampas: 0,
     alambreDulceM: 0, esqTranquera: trqE.esquineros, tranquerasDetalle: trqE.detalle,
     replanteo: null, hilos, puas: 0, postes: esquinerosE + estacones } };
 }
