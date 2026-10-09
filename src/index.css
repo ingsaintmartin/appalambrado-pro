@@ -89,7 +89,8 @@ input[type="range"].slider-hd::-moz-range-thumb {
 }
 
 .leaflet-container { font-family: var(--font-body); background: #dfe7ef; }
-.leaflet-control-zoom a { min-width: 40px !important; min-height: 40px !important; line-height: 40px !important; }
+/* El control de zoom chico de Leaflet está desactivado (zoomControl: false):
+   se usan botones propios de 56px en MapView para uso con guantes a pleno sol. */
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
