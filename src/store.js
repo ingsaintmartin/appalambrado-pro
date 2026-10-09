@@ -89,7 +89,7 @@ export const useStore = create(persist((set, get) => ({
     patron: 'suspendido7',
     usarManual: false, metrosManual: '',
     distRefuerzo: 80, sepVarillas: 2.0,
-    conTirantes: true, tranqueras: 2, hilosElec: 2,
+    conTirantes: true, hilosElec: 2,
     suelo: 'tierra',
     // Atadores y torniquetes (lógica de campo): atador 2,60 m cada N palos;
     // torniquetes en atadores (1 por hilo) y opcionalmente en esquineros.

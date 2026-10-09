@@ -440,6 +440,47 @@ const bufA = Buffer.from(await blobA.arrayBuffer());
 assert(bufA.includes('FACTURA A'), 'PDF RI: FACTURA A junto al número');
 assert(bufA.includes('IVA 10,5'), 'PDF RI: IVA 10,5 % discriminado');
 assert(bufA.includes('Responsable Inscripto'), 'PDF: condición fiscal RI en encabezado');
+/* ===== Bug fantasma de tranqueras (2026-10-09): ninguna tranquera/tranquerón
+   se agrega sin elección del usuario. Única fuente de verdad: tranquerasDetalle.
+   Antes, el fallback "conteo simple" (default tranqueras: 2) inyectaba
+   2 tranqueras al BOM con "0 ubicadas", y el cotizador ni siquiera recibía
+   las ubicadas. ===== */
+const esTranquera = (i) => /ranquer/i.test(i.codigo + ' ' + i.descripcion);
+for (const patron of ['suspendido7', 'convencional', 'electrico']) {
+  const r0 = calcularMateriales(patron, 719, { tranquerasDetalle: [] });
+  assert(r0.items.filter(esTranquera).length === 0,
+    `BOM ${patron} sin ubicadas: cero ítems de tranquera (sin fantasmas)`);
+}
+const r1 = calcularMateriales('convencional', 719, {
+  tranquerasDetalle: [{ pos: 709, tipo: 'tranqueron', anchoM: 10 }]
+});
+const g1 = r1.items.filter(esTranquera);
+assert(g1.length === 1 && g1[0].codigo === 'tranqueron-1000' && g1[0].cantidad === 1,
+  'BOM con 1 tranquerón ubicado: exactamente 1 ítem (tranqueron-1000 x1)');
+assert(r1.resumen.esqTranquera === 2, 'tranquerón genera 2 esquineros');
+// El cotizador recibe tranquerasDetalle (como lo arma useCostEngine): sin fantasmas,
+// la ubicada aparece y la MO cuenta las ubicadas.
+const cotT = calcularCotizacion({
+  tipo: 'convencional',
+  params: { conTirantes: true, tranquerasDetalle: [{ pos: 100, tipo: 'tranquera', anchoM: 3.5 }], hilosElec: 2 },
+  medicion: { metros: 719 },
+  mo: { precioM: 600, tranqueras: 1, precioTranquera: 105000 },
+  log: {}, porc: {}, materialesDueno: true, ivaModo: 'sin'
+}, []);
+const gcT = cotT.materiales.filter(esTranquera);
+assert(gcT.length === 1 && gcT[0].codigo === 'tranquera-350',
+  'cotización con 1 tranquera ubicada: 1 ítem, sin fantasmas');
+assert(cotT.manoObra.tranqueras === 105000, 'MO tranqueras = ubicadas × precio');
+// Flujo completo: agregar → ver → eliminar
+let det = [];
+let ra = agregarTranquera(det, '709', 'tranqueron', '10', 719);
+assert(ra.ok && ra.detalle.length === 1, 'agregar tranquerón OK');
+det = ra.detalle;
+const rVer = calcularMateriales('convencional', 719, { tranquerasDetalle: det });
+assert(rVer.items.filter(esTranquera).length === 1, 'ver: 1 ítem en BOM');
+det = det.filter((t) => !(t.pos === 709 && t.tipo === 'tranqueron'));
+const rDel = calcularMateriales('convencional', 719, { tranquerasDetalle: det });
+assert(rDel.items.filter(esTranquera).length === 0, 'eliminar: BOM sin tranqueras');
 
 console.log('\n----------------------------------------');
 console.log('Resultado: ' + ok + ' OK, ' + mal + ' FALLIDAS');
