@@ -121,10 +121,10 @@ const proyectoTest = {
   porc: { contingencia: 5, margen: 20 }
 };
 const cot = calcularCotizacion(proyectoTest, preciosTest);
-const matEsp = 6 * 210000 + 5 * 100000 + 2 * 90000 + 12 * 28000 + 500 * 1700 + 7 * 24000 + 14 * 12000 + alambreDulceManeas(500, 7) * 950 + 2 * 14000;
+const matEsp = 6 * 210000 + 5 * 100000 + 2 * 90000 + 12 * 28000 + 500 * 1700 + 7 * 24000 + 14 * 12000 + alambreDulceManeas(500, 0) * 950 + 2 * 14000;
 // 7 aéreas (7×1 atad) + 14 pajaritos (7×2 esq), regla de campo 2026-10-09; sin planchuelas
 // grampas: default OFF 2026-10-09 (método del alambrador: no usa grampas) → 0
-// dulce: 500 varillas × 7 hilos × 0,30 m + 5% = 1103 m (maneas, no el 1,4% viejo)
+// dulce: 500 var × 3 + 0 palos × 1 = 1500 maneas × 0,30 m + 5% = 473 m
 // 2 tirantes (1 por dirección en línea)
 assert(cot.totalMateriales === matEsp, 'total materiales', cot.totalMateriales + ' vs ' + matEsp);
 assert(cot.manoObra.total === 1500000, 'MO 1000m × $1500');
@@ -570,24 +570,26 @@ assert(rGrDef.resumen.grampas === 0 && !rGrDef.items.some((i) => i.codigo === 'g
   'grampas default: OFF sin pasar el parámetro');
 assert(PARAMS_DEFAULT.grampasIntermedios === false, 'PARAMS_DEFAULT.grampasIntermedios === false');
 
-/* --- Maneas de varillas con alambre dulce (método del alambrador 2026-10-09) --- */
-console.log('\n[Maneas de varillas]');
-assert(alambreDulceManeas(500, 7) === 1103, 'maneas 500×7: 1103 m', alambreDulceManeas(500, 7));
-assert(alambreDulceManeas(0, 7) === 0, 'maneas 0 varillas: 0 m');
-assert(alambreDulceManeas(100, 0) === 0, 'maneas 0 hilos: 0 m');
-assert(alambreDulceManeas(1, 1) === 0, 'maneas 1×1: redondea a 0 m', alambreDulceManeas(1, 1));
+/* --- Maneas: 3 por varilla + 1 en la cabeza de cada palo intermedio (alambrador 2026-10-09) --- */
+console.log('\n[Maneas]');
+assert(alambreDulceManeas(400, 60) === 397, 'maneas 400var+60palos: 397 m', alambreDulceManeas(400, 60));
+assert(alambreDulceManeas(500, 0) === 473, 'maneas 500var+0palos: 473 m', alambreDulceManeas(500, 0));
+assert(alambreDulceManeas(0, 60) === 19, 'maneas 0var+60palos: 19 m (palos sí cuentan)', alambreDulceManeas(0, 60));
+assert(alambreDulceManeas(0, 0) === 0, 'maneas 0/0: 0 m');
+assert(detalleManeas(400, 60) === '400 var × 3 + 60 palos × 1 = 1260 maneas × 0,30 m + 5%',
+  'fórmula visible del detalle', detalleManeas(400, 60));
 const rMan = calcularMateriales('suspendido7', 1000, { poligono: false, nVertices: 0 });
 const itDulce = rMan.items.find((i) => i.codigo === 'alambre-dulce');
-assert(rMan.resumen.alambreDulceM === 1103, 'suspendido7 1000m: dulce = 1103 m', rMan.resumen.alambreDulceM);
+assert(rMan.resumen.alambreDulceM === 473, 'suspendido7 1000m: dulce = 473 m', rMan.resumen.alambreDulceM);
 assert(itDulce && itDulce.unidad === 'm', 'dulce: unidad metros');
-assert(itDulce && /500 varillas × 7 hilos × 0,30 m \+ 5%/.test(itDulce.detalle),
+assert(itDulce && /500 var × 3 \+ 0 palos × 1 = 1500 maneas × 0,30 m \+ 5%/.test(itDulce.detalle),
   'dulce: fórmula visible en el detalle', itDulce && itDulce.detalle);
-assert(itDulce && /maneas de varillas/i.test(itDulce.descripcion),
-  'dulce: descripción "maneas de varillas"', itDulce && itDulce.descripcion);
+assert(itDulce && /p\/ maneas/i.test(itDulce.descripcion),
+  'dulce: descripción "p/ maneas"', itDulce && itDulce.descripcion);
 const rManC = calcularMateriales('convencional', 1000, {});
 const itDulceC = rManC.items.find((i) => i.codigo === 'alambre-dulce');
-assert(rManC.resumen.alambreDulceM === 1103, 'convencional 1000m: dulce = 1103 m', rManC.resumen.alambreDulceM);
-assert(itDulceC && /500 varillas × 7 hilos × 0,30 m \+ 5%/.test(itDulceC.detalle),
+assert(rManC.resumen.alambreDulceM === 496, 'convencional 1000m: dulce = 496 m (500var×3+74palos)', rManC.resumen.alambreDulceM);
+assert(itDulceC && /500 var × 3 \+ 74 palos × 1 = 1574 maneas × 0,30 m \+ 5%/.test(itDulceC.detalle),
   'convencional: fórmula visible en el detalle', itDulceC && itDulceC.detalle);
 const rManE = calcularMateriales('electrico', 900, { hilosElec: 2 });
 assert(rManE.resumen.alambreDulceM === 0 && !rManE.items.some((i) => i.codigo === 'alambre-dulce'),

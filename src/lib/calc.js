@@ -166,15 +166,21 @@ export function contarTorniquetes(hilos, esquineros, atadoresT, o) {
   return contarTorniquetasAereas(hilos, atadoresT) + contarPajaritos(hilos, esquineros, o);
 }
 
-/* Alambre dulce para MANEAS de varillas (método del alambrador 2026-10-09):
-   cada varilla se manea a CADA hilo (1 manea por cruce varilla×hilo);
-   cada manea consume ~0,30 m de dulce; + 5% de desperdicio. Devuelve metros. */
-export function alambreDulceManeas(varillas, hilos) {
-  const maneas = Math.max(0, Math.round(varillas) || 0) * Math.max(0, Math.round(hilos) || 0);
+/* Alambre dulce para MANEAS (método del alambrador 2026-10-09):
+   - 3 maneas por varilla (fijan la varilla a los hilos);
+   - 1 manea en la cabeza de cada palo intermedio de 2,20 m;
+   - en atadores/esquineros NO van maneas (los hilos se atan a torniquetes/pajaritos).
+   Cada manea consume ~0,30 m de dulce; + 5% de desperdicio. Devuelve metros. */
+export function alambreDulceManeas(varillas, intermedios) {
+  const v = Math.max(0, Math.round(varillas) || 0);
+  const p = Math.max(0, Math.round(intermedios) || 0);
+  const maneas = v * 3 + p;
   return Math.round(maneas * 0.30 * 1.05);
 }
-export function detalleManeas(varillas, hilos) {
-  return varillas + ' varillas × ' + hilos + ' hilos × 0,30 m + 5%';
+export function detalleManeas(varillas, intermedios) {
+  const v = Math.max(0, Math.round(varillas) || 0);
+  const p = Math.max(0, Math.round(intermedios) || 0);
+  return v + ' var × 3 + ' + p + ' palos × 1 = ' + (v * 3 + p) + ' maneas × 0,30 m + 5%';
 }
 
 /* Atadores que llevan torniquete.
@@ -206,7 +212,7 @@ const DISPLAY = {
   'torniquete':        ['TRN-D7', 'Torniquetes Dobles N°7 Galvanizados', 'u'], // compat: ya no se emite
   'grampa':            ['GRP-GLV-12', 'Grampas Galv. 1 1/2" Reforzadas', 'u'],
   'grampa-kg':         ['GRP-GLV-KG', 'Grampas Galv. 1 1/2" Reforzadas', 'kg'],
-  'alambre-dulce':     ['ALD-14', 'Alambre dulce Nº14 p/ maneas de varillas', 'm'],
+  'alambre-dulce':     ['ALD-14', 'Alambre dulce Nº14 p/ maneas', 'm'],
   'tranquera':         ['TRQ-QBR-350', 'Tranquera Quebracho 3.50m c/herrajes', 'u'],
   'tranqueron':        ['TRQ-QBR-450', 'Tranquerón Quebracho 4.50m c/herrajes', 'u'],
   'estacon':           ['EST-ITN-160', 'Estacón Itín 1.60m', 'u'],
@@ -385,9 +391,9 @@ export function calcularMateriales(tipo, metros, opts = {}) {
       g.pesoKgDetalle = Math.round(grampas * (PESO_KG.grampa || 0.02) * 10) / 10;
       items.push(g);
     }
-    // Alambre dulce para maneas: 1 manea por cruce varilla×hilo, 0,30 m c/u + 5%.
-    const dulceM = alambreDulceManeas(varillas, nHilos);
-    items.push(item('alambre-dulce', dulceM, detalleManeas(varillas, nHilos)));
+    // Alambre dulce para maneas: 3 por varilla + 1 en la cabeza de cada palo intermedio.
+    const dulceM = alambreDulceManeas(varillas, intermedios);
+    items.push(item('alambre-dulce', dulceM, detalleManeas(varillas, intermedios)));
     // Tirantes dobles de contención por esquinero (si aplica).
     if (tirantes > 0) items.push(itemTirante(tirantes));
     // Tranqueras ubicadas (con posición) o conteo simple.
@@ -463,9 +469,9 @@ export function calcularMateriales(tipo, metros, opts = {}) {
       gC.pesoKgDetalle = Math.round(grampas * (PESO_KG.grampa || 0.02) * 10) / 10;
       items.push(gC);
     }
-    // Alambre dulce para maneas: 1 manea por cruce varilla×hilo, 0,30 m c/u + 5%.
-    const dulceMC = alambreDulceManeas(varillas, hilos);
-    items.push(item('alambre-dulce', dulceMC, detalleManeas(varillas, hilos)));
+    // Alambre dulce para maneas: 3 por varilla + 1 en la cabeza de cada palo intermedio.
+    const dulceMC = alambreDulceManeas(varillas, intermedios);
+    items.push(item('alambre-dulce', dulceMC, detalleManeas(varillas, intermedios)));
     items.push(...itemsTranquerasUbicadas(trq));
     // Resumen unificado (misma forma que suspendido7): única fuente de verdad.
     return { items, resumen: { esquineros, tirantes, atadores, intermedios, refuerzos: atadores,
