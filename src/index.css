@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@theme {
+  --color-agro: #1b4332;
+  --color-agro-2: #2d6a4f;
+  --color-agro-3: #40916c;
+  --color-agro-deep: #012d1d;
+  --color-quebracho: #7f4f24;
+  --color-quebracho-d: #582f0e;
+  --color-satblue: #2563eb;
+  --color-ok: #2e7d32;
+  --color-okbg: #ecfdf5;
+  --color-warn: #d97706;
+  --color-warnbg: #fffbeb;
+  --color-bad: #dc2626;
+  --color-badbg: #fef2f2;
+  --color-canvas: #faf8ff;
+  --color-canvas-2: #f2f3ff;
+  --color-ink: #0f172a;
+  --color-muted: #414844;
+  --color-line: #cbd5e1;
+  --color-whatsapp: #25d366;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Tarjeta estructural Agro-Industrial: borde duro 1.5px, SIN sombras (legible al sol) */
+.card-hd {
+  background: #fff;
+  border: 1.5px solid var(--color-line);
+  border-radius: 8px;
+}
+.card-hd-dark {
+  background: var(--color-agro);
+  border: 1.5px solid var(--color-agro-deep);
+  border-radius: 8px;
+  color: #fff;
+}
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.display { font-family: var(--font-display); }
+
+/* Inputs numéricos con borde físico */
+.field {
+  border: 1.5px solid #94a3b8;
+  border-radius: 6px;
+  background: #fff;
+  min-height: 48px;
+  padding: 0 12px;
+  font-size: 16px;
+  width: 100%;
+}
+.field:focus { outline: none; border: 2px solid var(--color-agro); }
+
+/* Range sliders gruesos para dedos/guantes */
+input[type="range"].slider-hd {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 32px;
+  background: transparent;
+}
+input[type="range"].slider-hd::-webkit-slider-runnable-track {
+  height: 8px; border-radius: 4px;
+  background: linear-gradient(to right, var(--color-agro) 0 var(--fill, 50%), #e2e8f0 var(--fill, 50%) 100%);
+}
+input[type="range"].slider-hd::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px; height: 28px; margin-top: -10px;
+  border-radius: 50%; background: #fff;
+  border: 2.5px solid var(--color-agro);
+}
+input[type="range"].slider-hd::-moz-range-track { height: 8px; border-radius: 4px; background: #e2e8f0; }
+input[type="range"].slider-hd::-moz-range-progress { height: 8px; border-radius: 4px; background: var(--color-agro); }
+input[type="range"].slider-hd::-moz-range-thumb {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #fff; border: 2.5px solid var(--color-agro);
+}
+
+.leaflet-container { font-family: var(--font-body); background: #dfe7ef; }
+.leaflet-control-zoom a { min-width: 40px !important; min-height: 40px !important; line-height: 40px !important; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
