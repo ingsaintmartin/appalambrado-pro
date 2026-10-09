@@ -13,6 +13,7 @@ import { useStore } from '../store.js';
 import { useFenceMaterials } from '../hooks/useFenceMaterials.js';
 import { fmtM, fmtNum } from '../lib/format.js';
 import { TIPOS_PALO } from '../lib/esquema.js';
+import { TIPOS_ALAMBRE, tipoAlambre, ESPECIES_MADERA, especieMadera } from '../lib/calc.js';
 import { Card, Badge, Btn, Chip, SliderRow, Stepper, SectionTitle, Toggle, EmptyState, Field } from './ui.jsx';
 import CorteReactivo from './CorteReactivo.jsx';
 import EsquemaPlanta from './EsquemaPlanta.jsx';
@@ -376,11 +377,19 @@ export default function Module2() {
             </span>
           )}
         </div>
+        {/* Distancia calculada entre varillas por claro (claro / (N+1)), validada contra la regla */}
+        {fm.esquemaParams.varillaModo === 'n' && fm.esquemaDibujo && fm.esquemaDibujo.varillas && fm.esquemaDibujo.varillas.espaciamientoCm != null && (
+          <div className={'rounded-md border-[1.5px] px-3 py-2 mb-3 text-[13px] mono ' + (fm.esquemaDibujo.varillas.ok ? 'border-agro-deep bg-agro/10' : 'border-warn bg-warn/10')}>
+            Distancia entre varillas por claro: <b>{String(fm.esquemaDibujo.varillas.espaciamientoCm).replace('.', ',')} cm</b>
+            {' · '}{fm.esquemaDibujo.varillas.mensaje}
+          </div>
+        )}
 
         <CorteReactivo esquema={fm.esquemaDibujo} />
 
         <div className="mt-3">
-          <EsquemaPlanta metros={metros} replanteo={r.replanteo} tranquerasDetalle={params.tranquerasDetalle} poligono={fm.cerrado} />
+          <EsquemaPlanta metros={metros} replanteo={r.replanteo} tranquerasDetalle={params.tranquerasDetalle} poligono={fm.cerrado}
+            resumen={r} distRefuerzoM={params.distRefuerzo} cadaNAtadores={params.cadaNAtadores} sepVarillas={params.sepVarillas} />
         </div>
       </Card>
 
@@ -432,6 +441,17 @@ export default function Module2() {
               </div>
             }
           >
+            <Field label="Especie de madera (esquineros 3,00 m)">
+              <select
+                className="w-full rounded-md border border-line bg-white px-2 py-2 text-[14px]"
+                value={params.maderaEsquinero || 'qcolorado'}
+                onChange={(e) => fm.setParam({ maderaEsquinero: e.target.value })}
+              >
+                {ESPECIES_MADERA.map((e) => (
+                  <option key={e.id} value={e.id}>{e.nombre}</option>
+                ))}
+              </select>
+            </Field>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 justify-between rounded-md bg-canvas-2 border border-line p-3">
               <button
                 className="flex items-center gap-2.5 min-h-[48px] text-left"
@@ -441,39 +461,67 @@ export default function Module2() {
                 <span className={'w-7 h-7 rounded border-[1.5px] border-line bg-white inline-flex items-center justify-center shrink-0 ' + (params.conTirantes ? '!bg-agro border-agro!-deep text-white' : '')}>
                   {params.conTirantes && <Check size={17} strokeWidth={3} />}
                 </span>
-                <span className="text-[14px] font-medium">Incluir puntales / tirantes dobles de contención por esquinero</span>
+                <span className="text-[14px] font-medium">Incluir puntales de contención (1 por dirección de alambrado)</span>
               </button>
               <div className="text-[13px] text-muted">
-                Tirantes calculados: <span className="mono font-bold text-warn">{fmtNum(r.tirantes || 0)} tirantes (Quebracho 2.40m)</span>
+                Tirantes calculados: <span className="mono font-bold text-warn">{fmtNum(r.tirantes || 0)} puntales (Quebracho 2.40m)</span>
               </div>
             </div>
           </NumCard>
 
-          {/* 02 refuerzos */}
+          {/* 02 atadores / intermedios */}
           <NumCard
-            n="02" title="Postes Intermedios / Refuerzos"
-            sub="Quebracho Blanco impregnado / Curupay 2.20m"
+            n="02" title="Postes Atadores / Intermedios"
+            sub="Atador 2,60 m (tensión) · Intermedio 2,20 m"
             right={
               <div className="text-right">
                 <div className="text-[11px] text-muted mono">Cálculo: ({fmtM(metros)} / Intervalo)</div>
-                <div className="mono font-bold text-[18px] text-agro">{fmtNum(r.refuerzos || 0)} <span className="text-[13px] font-normal">Unidades</span></div>
+                <div className="mono font-bold text-[18px] text-agro">{fmtNum((r.atadores || 0) + (r.intermedios || 0))} <span className="text-[13px] font-normal">Unidades</span></div>
+                <div className="text-[11px] text-muted mono">{fmtNum(r.atadores || 0)} atad. 2,60 m + {fmtNum(r.intermedios || 0)} interm. 2,20 m</div>
               </div>
             }
           >
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-center">
-              <SliderRow
-                label="Distancia entre refuerzos" value={params.distRefuerzo}
-                min={60} max={100} step={1}
-                onChange={(v) => fm.setParam({ distRefuerzo: v })}
-                format={(v) => v + ' m'}
-                hint="Recomendado: 60m - 100m · Cañada: refuerzo cada 8 m"
-              />
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] text-muted">Frecuencia:</span>
-                <Stepper value={params.distRefuerzo} min={60} max={100} step={1}
-                  onChange={(v) => fm.setParam({ distRefuerzo: v })} format={(v) => v + 'm'} />
+            <Field label="Especie de madera (atadores e intermedios)">
+              <select
+                className="w-full rounded-md border border-line bg-white px-2 py-2 text-[14px]"
+                value={params.maderaIntermedio || 'qblanco'}
+                onChange={(e) => fm.setParam({ maderaIntermedio: e.target.value })}
+              >
+                {ESPECIES_MADERA.map((e) => (
+                  <option key={e.id} value={e.id}>{e.nombre}</option>
+                ))}
+              </select>
+            </Field>
+            {fm.patron === 'suspendido7' ? (
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-center">
+                <SliderRow
+                  label="Distancia entre refuerzos" value={params.distRefuerzo}
+                  min={60} max={100} step={1}
+                  onChange={(v) => fm.setParam({ distRefuerzo: v })}
+                  format={(v) => v + ' m'}
+                  hint="Recomendado: 60m - 100m · Cañada: refuerzo cada 8 m"
+                />
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] text-muted">Frecuencia:</span>
+                  <Stepper value={params.distRefuerzo} min={60} max={100} step={1}
+                    onChange={(v) => fm.setParam({ distRefuerzo: v })} format={(v) => v + 'm'} />
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="text-[13px] text-muted rounded-md bg-canvas-2 border border-line p-3">
+                {fm.patron === 'convencional'
+                  ? 'Convencional: poste cada 12 m. Cada N palos se asciende a atador 2,60 m (ahí van las torniquetas).'
+                  : 'Eléctrico: estacones livianos cada 30 m, sin atadores.'}
+              </div>
+            )}
+            {fm.patron !== 'electrico' && (
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-[13px] text-muted">Atador cada N palos:</span>
+                <Stepper value={params.cadaNAtadores ?? 10} min={2} max={30} step={1}
+                  onChange={(v) => fm.setParam({ cadaNAtadores: v })} format={(v) => 'cada ' + v} />
+                <span className="text-[12px] text-muted">(ajustable · default 10)</span>
+              </div>
+            )}
           </NumCard>
 
           {/* 02b replanteo exacto */}
@@ -548,18 +596,21 @@ export default function Module2() {
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-center">
               <SliderRow
                 label="Separación entre varillas" value={params.sepVarillas}
-                min={1.8} max={2.5} step={0.1}
+                min={1.0} max={2.5} step={0.1}
                 onChange={(v) => fm.setParam({ sepVarillas: Math.round(v * 10) / 10 })}
                 format={(v) => v.toFixed(1).replace('.', ',') + ' m'}
-                hint="Norma bovina: 1.8m - 2.5m"
+                hint="Regla de campo: 1,0 m – 2,5 m (común 100–180 cm entre varillas)"
               />
               <div className="flex items-center gap-2">
                 <span className="text-[13px] text-muted">Paso:</span>
-                <Stepper value={params.sepVarillas} min={1.8} max={2.5} step={0.1}
+                <Stepper value={params.sepVarillas} min={1.0} max={2.5} step={0.1}
                   onChange={(v) => fm.setParam({ sepVarillas: Math.round(v * 10) / 10 })}
                   format={(v) => v.toFixed(1).replace('.', ',') + 'm'} />
               </div>
             </div>
+            {fm.esquemaDibujo && fm.esquemaDibujo.varillas && fm.esquemaDibujo.varillas.mensaje && (
+              <div className="text-[12px] text-muted mt-1 mono">{fm.esquemaDibujo.varillas.mensaje} (validado contra la regla)</div>
+            )}
           </NumCard>
 
           {/* 04 hilos */}
@@ -568,22 +619,65 @@ export default function Module2() {
             sub={fmtM(metros) + ' × ' + he.hilos + ' hilos (' + he.puas + ' púas) = ' + fmtM(metros * he.hilos) + ' netos'}
             right={<div className="text-right"><div className="text-[11px] text-muted">Total con +5% merma:</div><div className="mono font-bold text-[18px] text-agro">{fmtM(mAlambre)}</div></div>}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {(r.mLiso != null || r.rollosLiso != null) && (
+            {fm.patron === 'electrico' ? (
+              <div className="flex flex-col gap-3">
+                <Field label="Tipo de alambre (eléctrico)">
+                  <select
+                    className="w-full rounded-md border border-line bg-white px-2 py-2 text-[14px]"
+                    value={params.alambreElectro || 'ep6'}
+                    onChange={(e) => fm.setParam({ alambreElectro: e.target.value })}
+                  >
+                    {TIPOS_ALAMBRE.electro.map((t) => (
+                      <option key={t.id} value={t.id}>{t.nombre} · rollo {t.rolloM} m</option>
+                    ))}
+                  </select>
+                </Field>
                 <div className="rounded-md bg-canvas-2 border border-line p-3">
-                  <div className="font-semibold text-[14px]">Liso Alta Resistencia 17/15</div>
-                  <div className="mono font-bold text-[17px] text-agro mt-1">{fmtNum(r.rollosLiso || 0)} Rollos</div>
-                  <div className="text-[12px] text-muted mono">{fmtM(r.mLiso || 0)} totales (1.000 m c/u)</div>
+                  <div className="font-semibold text-[14px]">{tipoAlambre('electro', params.alambreElectro).nombre}</div>
+                  <div className="mono font-bold text-[17px] text-agro mt-1">{fmtNum(r.rollosElectro || 0)} Rollos</div>
+                  <div className="text-[12px] text-muted mono">{fmtM(r.mElectro || 0)} totales ({tipoAlambre('electro', params.alambreElectro).rolloM} m c/u)</div>
                 </div>
-              )}
-              {r.mPua != null && (
-                <div className="rounded-md bg-canvas-2 border border-line p-3">
-                  <div className="font-semibold text-[14px]">Púas Super Bagual</div>
-                  <div className="mono font-bold text-[17px] text-agro mt-1">{fmtNum(r.rollosPua || 0)} Rollos</div>
-                  <div className="text-[12px] text-muted mono">{fmtM(r.mPua || 0)} totales (500 m c/u)</div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Field label="Tipo de liso">
+                    <select
+                      className="w-full rounded-md border border-line bg-white px-2 py-2 text-[14px]"
+                      value={params.alambreLiso || '17-15'}
+                      onChange={(e) => fm.setParam({ alambreLiso: e.target.value })}
+                    >
+                      {TIPOS_ALAMBRE.liso.map((t) => (
+                        <option key={t.id} value={t.id}>{t.nombre} · rollo {t.rolloM} m</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Tipo de púas">
+                    <select
+                      className="w-full rounded-md border border-line bg-white px-2 py-2 text-[14px]"
+                      value={params.alambrePua || '4p'}
+                      onChange={(e) => fm.setParam({ alambrePua: e.target.value })}
+                    >
+                      {TIPOS_ALAMBRE.pua.map((t) => (
+                        <option key={t.id} value={t.id}>{t.nombre} · rollo {t.rolloM} m</option>
+                      ))}
+                    </select>
+                  </Field>
                 </div>
-              )}
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="rounded-md bg-canvas-2 border border-line p-3">
+                    <div className="font-semibold text-[14px]">{tipoAlambre('liso', params.alambreLiso).nombre}</div>
+                    <div className="mono font-bold text-[17px] text-agro mt-1">{fmtNum(r.rollosLiso || 0)} Rollos</div>
+                    <div className="text-[12px] text-muted mono">{fmtM(r.mLiso || 0)} totales ({tipoAlambre('liso', params.alambreLiso).rolloM} m c/u)</div>
+                  </div>
+                  <div className="rounded-md bg-canvas-2 border border-line p-3">
+                    <div className="font-semibold text-[14px]">{tipoAlambre('pua', params.alambrePua).nombre}</div>
+                    <div className="mono font-bold text-[17px] text-agro mt-1">{fmtNum(r.rollosPua || 0)} Rollos</div>
+                    <div className="text-[12px] text-muted mono">{fmtM(r.mPua || 0)} totales ({tipoAlambre('pua', params.alambrePua).rolloM} m c/u)</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </NumCard>
 
           {/* 05 herrajes */}
@@ -593,9 +687,11 @@ export default function Module2() {
           >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div className="rounded-md bg-canvas-2 border border-line p-3">
-                <div className="text-[12px] text-muted">Torniquetes Dobles N°7</div>
+                <div className="text-[12px] text-muted">{fm.patron === 'electrico' ? 'Tensores' : 'Torniquetes Dobles N°7'}</div>
                 <div className="mono font-bold text-[19px] mt-0.5">{fmtNum(r.torniquetes || 0)} u.</div>
-                <div className="text-[12px] text-muted">Galvanizados</div>
+                <div className="text-[12px] text-muted mono">
+                  {he.hilos} hilos × ({(params.torniqEsquineros ?? true) ? (r.esquineros || 0) + ' esq' : '0 esq'} + {r.atadoresT || 0} atad)
+                </div>
               </div>
               <div className="rounded-md bg-canvas-2 border border-line p-3">
                 <div className="text-[12px] text-muted">Varillas Tensión</div>
@@ -613,6 +709,20 @@ export default function Module2() {
                 <div className="text-[12px] text-muted">Ataduras varilla</div>
               </div>
             </div>
+            {fm.patron !== 'electrico' && (
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-center flex-wrap mt-1">
+                <Toggle
+                  checked={params.torniqEsquineros ?? true}
+                  onChange={(v) => fm.setParam({ torniqEsquineros: v })}
+                  label="Torniquetes en esquineros"
+                />
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] text-muted">Torniquete cada N atadores:</span>
+                  <Stepper value={params.torniqCadaAtadores ?? 1} min={1} max={10} step={1}
+                    onChange={(v) => fm.setParam({ torniqCadaAtadores: v })} format={(v) => 'cada ' + v} />
+                </div>
+              </div>
+            )}
           </NumCard>
 
           {/* 06 tranqueras ubicadas */}
@@ -623,7 +733,7 @@ export default function Module2() {
               <div className="text-right">
                 <div className="mono font-bold text-[18px] text-agro">{(params.tranquerasDetalle || []).length} ubicadas</div>
                 {(r.esqTranquera || 0) > 0 && (
-                  <div className="mono text-[12px] text-warn font-bold">+{r.esqTranquera} esquineros +{params.conTirantes ? r.esqTranquera * 2 : 0} puntales</div>
+                  <div className="mono text-[12px] text-warn font-bold">+{r.esqTranquera} esquineros +{params.conTirantes ? r.esqTranquera : 0} puntales</div>
                 )}
               </div>
             }
@@ -655,7 +765,7 @@ export default function Module2() {
                     </div>
                     <div className="text-right shrink-0">
                       <div className="mono font-bold text-[15px]">{fmtNum(it.cantidad)} {sufijoU(it.unidad)}</div>
-                      {it.pesoKg > 0 && <div className="mono text-[12px] text-muted">{it.pesoKg.toLocaleString('es-AR')} tn</div>}
+                      {it.pesoKg > 0 && <div className="mono text-[12px] text-muted">{it.pesoKg >= 1000 ? (it.pesoKg / 1000).toLocaleString('es-AR', { maximumFractionDigits: 2 }) + ' tn' : it.pesoKg.toLocaleString('es-AR') + ' kg'}</div>}
                     </div>
                   </div>
                   <div className="flex items-center justify-between">

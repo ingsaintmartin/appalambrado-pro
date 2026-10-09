@@ -70,24 +70,33 @@ export default function CorteReactivo({ esquema }) {
       ))}
 
       {/* hilos */}
-      {hilos.map((h, i) => {
-        const y = yDe(h.alturaCm);
-        const color = COLOR_HILO[h.tipo] || '#2d6a4f';
-        return (
-          <g key={i}>
-            <line x1="40" y1={y} x2={W - 24} y2={y} stroke={color}
-              strokeWidth={h.tipo === 'pua' ? 3.2 : 2.4}
-              strokeDasharray={h.tipo === 'pua' ? '10 4' : h.tipo === 'electro' ? '3 3' : 'none'} />
-            {[POSTE_X0 + POSTE_W / 2, POSTE_X1 + POSTE_W / 2, ...posVarillas].map((x, j) => (
-              <circle key={j} cx={x} cy={y} r="3.2" fill={color} stroke="#fff" strokeWidth="1" />
-            ))}
-            <text x="36" y={y + 4} textAnchor="end" fontSize="11" fontWeight="800" fill={color}>{h.alturaCm}</text>
-            {mostrarEtiq && (
-              <text x={W - 20} y={y + 4} textAnchor="end" fontSize="9.5" fill="#6b7280">{ETIQ_CORTO[h.tipo]} · {h.alturaCm}cm</text>
-            )}
-          </g>
-        );
-      })}
+      {(() => {
+        // Anti-colisión: si los hilos están muy juntos en vertical, se saltean
+        // etiquetas de altura para que no se encimen (mínimo 13 px entre ellas).
+        let ultimaY = -1e9;
+        return hilos.map((h, i) => {
+          const y = yDe(h.alturaCm);
+          const color = COLOR_HILO[h.tipo] || '#2d6a4f';
+          const mostrarAlt = y - ultimaY >= 13;
+          if (mostrarAlt) ultimaY = y;
+          return (
+            <g key={i}>
+              <line x1="40" y1={y} x2={W - 24} y2={y} stroke={color}
+                strokeWidth={h.tipo === 'pua' ? 3.2 : 2.4}
+                strokeDasharray={h.tipo === 'pua' ? '10 4' : h.tipo === 'electro' ? '3 3' : 'none'} />
+              {[POSTE_X0 + POSTE_W / 2, POSTE_X1 + POSTE_W / 2, ...posVarillas].map((x, j) => (
+                <circle key={j} cx={x} cy={y} r="3.2" fill={color} stroke="#fff" strokeWidth="1" />
+              ))}
+              {mostrarAlt && (
+                <text x="36" y={y + 4} textAnchor="end" fontSize={hilos.length > 7 ? 9 : 11} fontWeight="800" fill={color}>{h.alturaCm}</text>
+              )}
+              {mostrarEtiq && (
+                <text x={W - 20} y={y + 4} textAnchor="end" fontSize="9.5" fill="#6b7280">{ETIQ_CORTO[h.tipo]} · {h.alturaCm}cm</text>
+              )}
+            </g>
+          );
+        });
+      })()}
       <text x="36" y={yDe(0) + 4} textAnchor="end" fontSize="10" fill="#9ca3af">cm</text>
 
       {/* cota de distancia entre palos */}

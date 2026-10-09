@@ -7,7 +7,8 @@ import {
   haversineM, distanciaTotalM, perimetroM, areaEsfericaM2, areaPlanarM2,
   hectareasDe, calcularMateriales, calcularCotizacion, calcularKPIs,
   precioKmDesdeConsumo, pesoTotalTn, camionSugerido, refuerzoEfectivoM,
-  TIPOS_ALAMBRADO, PARAMS_DEFAULT
+  TIPOS_ALAMBRADO, PARAMS_DEFAULT, contarTorniquetes, atadoresConTorniquete,
+  TIPOS_ALAMBRE, tipoAlambre, ESPECIES_MADERA, especieMadera
 } from '../src/lib/calc.js';
 import { generarPresupuestoPDF } from '../src/lib/pdf.js';
 import {
@@ -53,8 +54,10 @@ const porCod = {};
 for (const it of items) porCod[it.codigo] = it.cantidad;
 const esperado = {
   'poste-esquinero': 2, 'poste-refuerzo': 12, 'varilla': 500,
-  'alambre-liso-rollo': 6, 'alambre-pua-rollo': 5, 'torniquete': 14,
-  'grampa': 98, 'tirante': 4, 'varilla-tension': 28
+  'alambre-liso-rollo': 6, 'alambre-pua-rollo': 5, 'torniquete': 21,
+  'grampa': 98, 'tirante': 2, 'varilla-tension': 42
+  // torniquete 21 = 7 hilos × (2 esq + 1 atador cada 10 refuerzos): regla de campo 2026-10-09
+  // tirante 2 = 2 esquineros × 1 dirección (regla de campo 2026-10-09)
 };
 for (const cod of Object.keys(esperado))
   assert(porCod[cod] === esperado[cod], cod + ' = ' + esperado[cod], 'dio ' + porCod[cod]);
@@ -65,7 +68,7 @@ const c3850 = {};
 for (const it of r3850.items) c3850[it.codigo] = it.cantidad;
 assert(c3850['poste-refuerzo'] === 48, '3850m/80m → 48 refuerzos (diseño)', c3850['poste-refuerzo']);
 assert(c3850['poste-esquinero'] === 4, 'polígono: 4 esquineros');
-assert(c3850['torniquete'] === 28, 'polígono: 28 torniquetes (7×4)');
+assert(c3850['torniquete'] === 56, 'polígono: 56 torniquetes (7×(4 esq+4 atad))', c3850['torniquete']);
 assert(c3850['varilla'] === 1925, '3850/2 → 1925 varillas');
 // Suelo cañada: refuerzo cada 8 m
 assert(refuerzoEfectivoM(80, 'canada') === 8, "cañada → refuerzo 8 m");
@@ -106,7 +109,9 @@ const proyectoTest = {
   porc: { contingencia: 5, margen: 20 }
 };
 const cot = calcularCotizacion(proyectoTest, preciosTest);
-const matEsp = 6 * 210000 + 5 * 100000 + 2 * 90000 + 12 * 28000 + 500 * 1700 + 14 * 22000 + 28 * 3800 + 98 * 80 + Math.round(7350 * 0.014) * 950 + 4 * 14000;
+const matEsp = 6 * 210000 + 5 * 100000 + 2 * 90000 + 12 * 28000 + 500 * 1700 + 21 * 22000 + 42 * 3800 + 98 * 80 + Math.round(7350 * 0.014) * 950 + 2 * 14000;
+// 21 torniquetes (7×(2 esq+1 atad)) y 42 varillas de tensión, regla de campo 2026-10-09
+// 2 tirantes (1 por dirección en línea)
 assert(cot.totalMateriales === matEsp, 'total materiales', cot.totalMateriales + ' vs ' + matEsp);
 assert(cot.manoObra.total === 1500000, 'MO 1000m × $1500');
 assert(cot.logistica.total === 200000, 'logística 60×2500+50000');
@@ -162,12 +167,12 @@ assert(validarVarillas(15, 0, 'comun').ok, '0 varillas → ok');
 
 console.log('\n== Tranqueras → esquineros ==');
 const trq = materialesTranqueras([{ pos: 120, tipo: 'tranquera' }, { pos: 400, tipo: 'tranqueron' }], true);
-assert(trq.cantidad === 2 && trq.esquineros === 4 && trq.tirantes === 8, '2 ubicadas → 4 esquineros + 8 puntales');
+assert(trq.cantidad === 2 && trq.esquineros === 4 && trq.tirantes === 4, '2 ubicadas → 4 esquineros + 4 puntales (1 por poste)');
 assert(trq.porTipo.tranquera === 1 && trq.porTipo.tranqueron === 1, 'conteo por tipo');
 const mTrq = calcularMateriales('suspendido7', 1000, { tranquerasDetalle: [{ pos: 120, tipo: 'tranquera' }] });
 const cTrq = {}; mTrq.items.forEach((i) => cTrq[i.codigo] = i.cantidad);
 assert(cTrq['poste-esquinero'] === 4, 'BOM: 2 extremos + 2 por tranquera = 4 esquineros');
-assert(cTrq['tirante'] === 8, 'BOM: 8 puntales');
+assert(cTrq['tirante'] === 4, 'BOM: 4 puntales (2 línea + 2 tranquera, 1 por dirección)');
 assert(cTrq['tranquera'] === 1, 'BOM: 1 tranquera ubicada');
 assert(mTrq.resumen.esqTranquera === 2, 'resumen.esqTranquera = 2');
 
@@ -178,7 +183,7 @@ assert(d3[0].tipo === 'pua' && d3[1].tipo === 'liso', 'púas abajo');
 assert(distribuirAlturas(1, 220, 0)[0].tipo === 'liso' && distribuirAlturas(1, 220, 1)[0].tipo === 'pua', '1 hilo respeta púa');
 const mH3 = calcularMateriales('suspendido7', 1000, { hilos: 3, puas: 1 });
 const cH3 = {}; mH3.items.forEach((i) => cH3[i.codigo] = i.cantidad);
-assert(cH3['torniquete'] === 6, '3 hilos → 6 torniquetes');
+assert(cH3['torniquete'] === 9, '3 hilos → 9 torniquetes (3×(2 esq+1 atad))');
 assert(mH3.resumen.hilos === 3 && mH3.resumen.puas === 1, 'resumen hilos/puas');
 assert(cH3['alambre-pua-rollo'] === Math.ceil(1000 * 1 * 1.05 / 500), 'púa: 1000×1×1.05 en rollos de 500');
 const mH7 = calcularMateriales('suspendido7', 1000, {});
@@ -215,6 +220,69 @@ assert(buf.length > 2000, 'PDF no vacío (' + buf.length + ' bytes)');
 assert(buf.slice(0, 8).toString('ascii') === '%PDF-1.4', 'cabecera %PDF-1.4');
 assert(buf.includes('WinAnsiEncoding'), 'WinAnsiEncoding (ñ/tildes)');
 assert(buf.includes('startxref'), 'xref válida');
+
+console.log('\n== Módulo 2: defectos 2026-10-09 ==');
+// Defecto 2: esquineros/puntales en tramo lineal (los 3 patrones)
+// Puntales: 1 por dirección → línea: 2 esquineros × 1 = 2 puntales
+for (const pat of ['suspendido7', 'convencional', 'electrico']) {
+  const rr = calcularMateriales(pat, 719, { poligono: false, nVertices: 0 }).resumen;
+  assert(rr.esquineros === 2, pat + ': 2 esquineros en tramo lineal', rr.esquineros);
+  assert(rr.tirantes === 2, pat + ': 2 puntales (1 por dirección)', rr.tirantes);
+}
+// Polígono: cada esquina tiene 2 direcciones → 2 puntales por esquinero
+const rPoly = calcularMateriales('suspendido7', 1000, { poligono: true, nVertices: 4 }).resumen;
+assert(rPoly.esquineros === 4, 'polígono: 4 esquineros', rPoly.esquineros);
+assert(rPoly.tirantes === 8, 'polígono: 8 puntales (4×2 direcciones)', rPoly.tirantes);
+// Tranquera: 1 puntal por poste (el hilo tensa de un solo lado)
+const rTrq = calcularMateriales('convencional', 719, {
+  tranquerasDetalle: [{ pos: 300, tipo: 'tranquera' }]
+}).resumen;
+assert(rTrq.esquineros === 4, 'tranquera: +2 esquineros', rTrq.esquineros);
+assert(rTrq.tirantes === 4, 'tranquera: 2 (línea) + 2 (1 por poste)', rTrq.tirantes);
+// Defecto 1: resumen unificado — las tarjetas leen los mismos campos en los 3 patrones
+const CAMPOS = ['esquineros', 'tirantes', 'atadores', 'intermedios', 'varillas',
+  'mLiso', 'mPua', 'rollosLiso', 'rollosPua', 'torniquetes', 'grampas', 'alambreDulceM'];
+for (const pat of ['suspendido7', 'convencional', 'electrico']) {
+  const rr = calcularMateriales(pat, 719, {}).resumen;
+  const faltan = CAMPOS.filter((k) => rr[k] === undefined);
+  assert(faltan.length === 0, pat + ': resumen completo (tarjetas = BOM)', faltan.join(','));
+}
+// Defecto 8: atadores cada N (default 10) en convencional 719 m
+const rConv = calcularMateriales('convencional', 719, {}).resumen;
+assert(rConv.atadores === 5, 'convencional 719m: 5 atadores (58/10)', rConv.atadores);
+assert(rConv.intermedios === 53, 'convencional 719m: 53 intermedios', rConv.intermedios);
+assert(rConv.atadores + rConv.intermedios + rConv.esquineros === 60, 'convencional: total posiciones = 60 (719/12+1)');
+const rConvN5 = calcularMateriales('convencional', 719, { cadaNAtadores: 5 }).resumen;
+assert(rConvN5.atadores === 11, 'convencional N=5 ajustable: 11 atadores', rConvN5.atadores);
+// Defecto 8: torniquetes = hilos × (esquineros_con + atadores_con)
+assert(contarTorniquetes(7, 2, 5, { torniqEsquineros: true }) === 49, 'torniquetes 7×(2+5)=49');
+assert(contarTorniquetes(7, 2, 5, { torniqEsquineros: false }) === 35, 'sin esq: 7×5=35');
+assert(atadoresConTorniquete(5, { torniqCadaAtadores: 2 }, false) === 3, 'cada 2 atadores: ceil(5/2)=3');
+assert(atadoresConTorniquete(12, { cadaNAtadores: 10, torniqCadaAtadores: 1 }, true) === 1, 'clásico: floor(12/10)=1');
+const rT2 = calcularMateriales('suspendido7', 1000, { torniqEsquineros: false }).resumen;
+assert(rT2.torniquetes === 7, 'toggle esq OFF: 7×(0+1)=7', rT2.torniquetes);
+// Defecto 7: tipos de alambre y especies de madera
+assert(TIPOS_ALAMBRE.liso.some((t) => t.id === '15-13'), 'liso 15/13 pesado');
+assert(TIPOS_ALAMBRE.pua.some((t) => t.id === '4p') && TIPOS_ALAMBRE.pua.some((t) => t.id === '2p'), 'púas 4 y 2 puntas');
+assert(TIPOS_ALAMBRE.electro.some((t) => t.id === 'ep6') && TIPOS_ALAMBRE.electro.some((t) => t.id === 'boy25'), 'electroplástico 6mm y boyero 2,5mm');
+assert(tipoAlambre('liso', '15-13').rolloM === 1000, 'rollo liso 1000 m');
+assert(ESPECIES_MADERA.some((e) => e.id === 'nandubay') && ESPECIES_MADERA.some((e) => e.id === 'algarrobo'), 'ñandubay y algarrobo');
+const rMad = calcularMateriales('suspendido7', 1000, { maderaEsquinero: 'nandubay' });
+const itEsq = rMad.items.find((i) => i.codigo === 'poste-esquinero');
+assert(itEsq.descripcion.includes('Ñandubay'), 'especie en descripción del poste', itEsq.descripcion);
+assert(itEsq.pesoKg < 85 * 2, 'factor de peso ñandubay < quebracho', itEsq.pesoKg);
+// Defecto 5: replanteo incluye atadores en la división de tramos
+const rRp = calcularMateriales('suspendido7', 719, {
+  replanteo: { atadoresM: 80, intermediosM: 15 }
+}).resumen;
+assert(rRp.replanteo && rRp.atadores === rRp.replanteo.atadores.cantidad, 'replanteo: atadores en tramos');
+assert(rRp.intermedios === rRp.replanteo.intermedios.cantidad, 'replanteo: intermedios en tramos');
+// Defecto 3: separador mínimo de varillas 1,0 m (regla 100–180 cm)
+assert(PARAMS_DEFAULT.sepVarillas >= 1.0, 'default sepVarillas ≥ 1,0');
+const vv120 = validarVarillas(12, 9, 'comun'); // claro 12 m / (9+1) = 120 cm
+assert(vv120.ok === true && vv120.espaciamientoCm === 120, 'varillas a 120 cm: dentro de regla', JSON.stringify(vv120));
+const vv200 = validarVarillas(12, 5, 'comun'); // claro 12 m / (5+1) = 200 cm
+assert(vv200.ok === false, 'varillas a 200 cm: fuera de regla (máx 180)');
 
 console.log('\n----------------------------------------');
 console.log('Resultado: ' + ok + ' OK, ' + mal + ' FALLIDAS');
