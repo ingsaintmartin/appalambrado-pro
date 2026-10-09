@@ -13,7 +13,10 @@ import {
 import { generarPresupuestoPDF } from '../src/lib/pdf.js';
 import {
   replanteoExacto, replanteoLinea, puntoEnDistancia,
-  validarVarillas, materialesTranqueras
+  validarVarillas, materialesTranqueras, agregarTranquera, normalizarTranquera,
+  anchoValidoTranquera, anchoDefaultTranquera, itemTranquera,
+  precioDefaultTranquera, textoAnchoTranquera,
+  ANCHOS_TRANQUERA, ANCHOS_TRANQUERON
 } from '../src/lib/calc.js';
 import {
   distribuirAlturas, calcularEsquema, hilosEfectivos,
@@ -168,13 +171,57 @@ assert(validarVarillas(15, 0, 'comun').ok, '0 varillas → ok');
 console.log('\n== Tranqueras → esquineros ==');
 const trq = materialesTranqueras([{ pos: 120, tipo: 'tranquera' }, { pos: 400, tipo: 'tranqueron' }], true);
 assert(trq.cantidad === 2 && trq.esquineros === 4 && trq.tirantes === 4, '2 ubicadas → 4 esquineros + 4 puntales (1 por poste)');
-assert(trq.porTipo.tranquera === 1 && trq.porTipo.tranqueron === 1, 'conteo por tipo');
+assert(trq.porTipo['tranquera|3.5'].cantidad === 1 && trq.porTipo['tranqueron|10'].cantidad === 1, 'conteo por tipo+ancho (default 3,5 / 10 m)');
 const mTrq = calcularMateriales('suspendido7', 1000, { tranquerasDetalle: [{ pos: 120, tipo: 'tranquera' }] });
 const cTrq = {}; mTrq.items.forEach((i) => cTrq[i.codigo] = i.cantidad);
 assert(cTrq['poste-esquinero'] === 4, 'BOM: 2 extremos + 2 por tranquera = 4 esquineros');
 assert(cTrq['tirante'] === 4, 'BOM: 4 puntales (2 línea + 2 tranquera, 1 por dirección)');
-assert(cTrq['tranquera'] === 1, 'BOM: 1 tranquera ubicada');
+assert(cTrq['tranquera-350'] === 1, 'BOM: 1 tranquera 3,50 m ubicada (código por ancho)');
 assert(mTrq.resumen.esqTranquera === 2, 'resumen.esqTranquera = 2');
+
+console.log('\n== Tranqueras: anchos variables e inserción ==');
+// Anchos válidos / inválidos por tipo
+assert(ANCHOS_TRANQUERA.join() === '3,3.5,4', 'tranquera: 3 / 3,5 / 4 m');
+assert(ANCHOS_TRANQUERON.length === 8 && ANCHOS_TRANQUERON[0] === 8 && ANCHOS_TRANQUERON[7] === 15, 'tranquerón: 8 a 15 m paso 1');
+assert(anchoValidoTranquera('tranquera', 3) && anchoValidoTranquera('tranquera', 4), '3 y 4 m válidos en tranquera');
+assert(!anchoValidoTranquera('tranquera', 4.5), '4,5 m NO válido en tranquera');
+assert(anchoValidoTranquera('tranqueron', 12) && !anchoValidoTranquera('tranqueron', 7) && !anchoValidoTranquera('tranqueron', 16), 'tranquerón 8–15');
+// Inserción pura: el caso del usuario (botón "Ubicar en la línea")
+let ins = agregarTranquera([], '300', 'tranquera', 3.5, 719);
+assert(ins.ok && ins.detalle.length === 1 && ins.detalle[0].pos === 300 && ins.detalle[0].anchoM === 3.5, 'inserta tranquera 3,5 m en 300 m');
+ins = agregarTranquera(ins.detalle, '120,5', 'tranqueron', 12, 719);
+assert(ins.ok && ins.detalle.length === 2 && ins.detalle[0].pos === 120.5, 'coma decimal argentina + orden por posición');
+assert(ins.detalle[1].tipo === 'tranquera', 'orden: 120,5 antes que 300');
+ins = agregarTranquera([], '800', 'tranquera', 3.5, 719);
+assert(!ins.ok && /0 y 719/.test(ins.error), 'posición fuera de rango → error visible, no silencio');
+ins = agregarTranquera([], '', 'tranquera', 3.5, 719);
+assert(!ins.ok, 'posición vacía → error');
+ins = agregarTranquera([], '100', 'tranquera', 4.5, 719);
+assert(!ins.ok && /Ancho no válido/.test(ins.error), 'ancho 4,5 en tranquera → error');
+// Normalización de entradas viejas (sin anchoM)
+const norm = normalizarTranquera({ pos: 50, tipo: 'tranqueron' });
+assert(norm.anchoM === 10 && norm.pos === 50, 'entrada vieja → ancho default 10 m');
+// BOM refleja el ancho: descripción, peso y código por medida
+const it4 = itemTranquera('tranquera', 4, 1, 'en 200m');
+assert(it4.codigo === 'tranquera-400' && /4 m/.test(it4.descripcion), 'código y descripción con ancho 4 m');
+assert(it4.pesoKg === 140, 'peso 4 m × 35 kg/m = 140 kg');
+const itQ = itemTranquera('tranqueron', 12, 1, 'en 500m');
+assert(itQ.codigo === 'tranqueron-1200' && itQ.pesoKg === 540, 'tranquerón 12 m × 45 kg/m = 540 kg');
+assert(textoAnchoTranquera(3.5) === '3,50 m' && textoAnchoTranquera(12) === '12 m', 'texto de ancho');
+assert(precioDefaultTranquera('tranquera', 3.5) === 387000, 'precio base tranquera 3,5 m');
+assert(precioDefaultTranquera('tranqueron', 10) > precioDefaultTranquera('tranqueron', 8), 'precio tranquerón crece con el ancho');
+// BOM agrupa por (tipo, ancho)
+const mAn = calcularMateriales('suspendido7', 1000, {
+  tranquerasDetalle: [
+    { pos: 100, tipo: 'tranquera', anchoM: 3.5 },
+    { pos: 500, tipo: 'tranquera', anchoM: 4 },
+    { pos: 800, tipo: 'tranqueron', anchoM: 12 }
+  ]
+});
+const cAn = {}; mAn.items.forEach((i) => cAn[i.codigo] = i);
+assert(cAn['tranquera-350'].cantidad === 1 && cAn['tranquera-400'].cantidad === 1, 'BOM: un renglón por ancho de tranquera');
+assert(cAn['tranqueron-1200'].cantidad === 1 && /12 m/.test(cAn['tranqueron-1200'].descripcion), 'BOM: tranquerón 12 m');
+assert(mAn.resumen.esqTranquera === 6, '3 ubicadas → 6 esquineros');
 
 console.log('\n== Hilos configurables (dibujo = cómputo) ==');
 const d3 = distribuirAlturas(3, 220, 1);

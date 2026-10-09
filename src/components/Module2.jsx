@@ -14,6 +14,10 @@ import { useFenceMaterials } from '../hooks/useFenceMaterials.js';
 import { fmtM, fmtNum } from '../lib/format.js';
 import { TIPOS_PALO } from '../lib/esquema.js';
 import { TIPOS_ALAMBRE, tipoAlambre, ESPECIES_MADERA, especieMadera } from '../lib/calc.js';
+import {
+  agregarTranquera, normalizarTranquera, textoAnchoTranquera,
+  ANCHOS_TRANQUERA, ANCHOS_TRANQUERON, anchoDefaultTranquera
+} from '../lib/calc.js';
 import { Card, Badge, Btn, Chip, SliderRow, Stepper, SectionTitle, Toggle, EmptyState, Field } from './ui.jsx';
 import CorteReactivo from './CorteReactivo.jsx';
 import EsquemaPlanta from './EsquemaPlanta.jsx';
@@ -71,58 +75,104 @@ function PrecioInput({ codigo }) {
   );
 }
 
-/* Editor de tranqueras ubicadas en la línea */
+/* Editor de tranqueras ubicadas en la línea.
+   Robusto: el input de posición es texto con inputMode decimal (evita los
+   quirks de type="number" en mobile/desktop y acepta coma decimal argentina);
+   la inserción pasa por agregarTranquera() (pura, testeada) que nunca falla
+   en silencio: si algo está mal muestra el error en vez de no hacer nada. */
 function TranquerasEditor({ detalle, metros, onChange }) {
   const [pos, setPos] = useState('');
   const [tipo, setTipo] = useState('tranquera');
+  const [ancho, setAncho] = useState(String(anchoDefaultTranquera('tranquera')));
+  const [error, setError] = useState('');
   const L = Math.max(0, parseFloat(metros) || 0);
+  const det = Array.isArray(detalle) ? detalle : [];
+  const anchos = tipo === 'tranqueron' ? ANCHOS_TRANQUERON : ANCHOS_TRANQUERA;
 
+  const elegirTipo = (t) => {
+    setTipo(t);
+    setAncho(String(anchoDefaultTranquera(t)));
+    setError('');
+  };
   const agregar = () => {
-    const p = parseFloat(pos);
-    if (isNaN(p) || p < 0 || p > L) return;
-    onChange([...detalle, { pos: Math.round(p * 10) / 10, tipo }].sort((a, b) => a.pos - b.pos));
+    const r = agregarTranquera(det, pos, tipo, ancho, L);
+    if (!r.ok) { setError(r.error); return; }
+    setError('');
+    onChange(r.detalle);
     setPos('');
   };
-  const quitar = (i) => onChange(detalle.filter((_, j) => j !== i));
-  const cambiar = (i, patch) => onChange(detalle.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  const quitar = (i) => onChange(det.filter((_, j) => j !== i));
+  const cambiar = (i, patch) => {
+    const t = normalizarTranquera({ ...det[i], ...patch });
+    onChange(det.map((x, j) => (j === i ? t : x)));
+  };
 
   return (
     <div className="flex flex-col gap-2">
-      {(detalle || []).map((t, i) => (
-        <div key={i} className="flex items-center gap-2 rounded-md border border-line bg-canvas-2 p-2 flex-wrap">
-          <DoorOpen size={18} className="text-quebracho shrink-0" />
-          <select value={t.tipo} onChange={(e) => cambiar(i, { tipo: e.target.value })}
-            className="field mono text-[13px] py-2!" aria-label="Tipo">
-            <option value="tranquera">Tranquera 3,50 m</option>
-            <option value="tranqueron">Tranquerón 4,50 m</option>
-          </select>
-          <label className="inline-flex items-center gap-1.5 mono text-[13px]">
-            <input type="number" min="0" max={Math.round(L)} step="1" value={t.pos}
-              onChange={(e) => {
-                const p = parseFloat(e.target.value);
-                if (!isNaN(p)) cambiar(i, { pos: Math.min(L, Math.max(0, p)) });
-              }}
-              className="field w-[96px] text-right mono text-[13px] py-2!" aria-label="Posición en metros" />
-            m desde inicio
-          </label>
-          <span className="mono text-[11px] text-muted">→ 2 esq. + 4 puntales</span>
-          <button onClick={() => quitar(i)} className="ml-auto w-10 h-10 rounded-md border-[1.5px] border-bad/50 text-bad flex items-center justify-center" aria-label="Quitar">
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ))}
+      {det.map((t0, i) => {
+        const t = normalizarTranquera(t0);
+        const anchosFila = t.tipo === 'tranqueron' ? ANCHOS_TRANQUERON : ANCHOS_TRANQUERA;
+        return (
+          <div key={i} className="flex items-center gap-2 rounded-md border border-line bg-canvas-2 p-2 flex-wrap">
+            <DoorOpen size={18} className="text-quebracho shrink-0" />
+            <select value={t.tipo} onChange={(e) => cambiar(i, { tipo: e.target.value, anchoM: anchoDefaultTranquera(e.target.value) })}
+              className="field mono text-[13px] py-2!" aria-label="Tipo">
+              <option value="tranquera">Tranquera</option>
+              <option value="tranqueron">Tranquerón</option>
+            </select>
+            <select value={String(t.anchoM)} onChange={(e) => cambiar(i, { anchoM: parseFloat(e.target.value) })}
+              className="field mono text-[13px] py-2!" aria-label="Ancho en metros">
+              {anchosFila.map((a) => (
+                <option key={a} value={String(a)}>{textoAnchoTranquera(a)}</option>
+              ))}
+            </select>
+            <label className="inline-flex items-center gap-1.5 mono text-[13px]">
+              <input type="text" inputMode="decimal" value={String(t.pos)}
+                onChange={(e) => {
+                  const v = e.target.value.replace(',', '.');
+                  if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                    const p = parseFloat(v);
+                    if (v === '' || !isNaN(p)) cambiar(i, { pos: v === '' ? 0 : Math.min(L, Math.max(0, p)) });
+                  }
+                }}
+                className="field w-[80px] text-right mono text-[13px] py-2!" aria-label="Posición en metros" />
+              m desde inicio
+            </label>
+            <span className="mono text-[11px] text-muted">→ 2 esq. + puntales</span>
+            <button onClick={() => quitar(i)} className="ml-auto w-10 h-10 rounded-md border-[1.5px] border-bad/50 text-bad flex items-center justify-center" aria-label="Quitar">
+              <Trash2 size={16} />
+            </button>
+          </div>
+        );
+      })}
       <div className="flex items-center gap-2 flex-wrap">
-        <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="field mono text-[13px] py-2.5!" aria-label="Tipo de nueva tranquera">
-          <option value="tranquera">Tranquera 3,50 m</option>
-          <option value="tranqueron">Tranquerón 4,50 m</option>
+        <select value={tipo} onChange={(e) => elegirTipo(e.target.value)} className="field mono text-[13px] py-2.5!" aria-label="Tipo de nueva tranquera">
+          <option value="tranquera">Tranquera</option>
+          <option value="tranqueron">Tranquerón</option>
         </select>
-        <input type="number" min="0" max={Math.round(L)} step="5" value={pos}
-          onChange={(e) => setPos(e.target.value)} placeholder={'Posición en m (0–' + Math.round(L) + ')'}
+        <select value={ancho} onChange={(e) => { setAncho(e.target.value); setError(''); }}
+          className="field mono text-[13px] py-2.5!" aria-label="Ancho en metros">
+          {anchos.map((a) => (
+            <option key={a} value={String(a)}>{textoAnchoTranquera(a)}</option>
+          ))}
+        </select>
+        <input type="text" inputMode="decimal" value={pos}
+          onChange={(e) => {
+            const v = e.target.value.replace(',', '.');
+            if (/^\d*\.?\d*$/.test(v)) { setPos(e.target.value); setError(''); }
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter') agregar(); }}
+          placeholder={'Posición en m (0–' + Math.round(L) + ')'}
           className="field mono text-[13px] w-[190px]" aria-label="Posición" />
-        <Btn className="min-h-[44px]! text-[13px]!" onClick={agregar} disabled={pos === '' || isNaN(parseFloat(pos))}>
+        <Btn className="min-h-[44px]! text-[13px]!" onClick={agregar}>
           <Plus size={16} /> Ubicar en la línea
         </Btn>
       </div>
+      {error && (
+        <div className="mono text-[12px] text-bad font-semibold flex items-center gap-1.5" role="alert">
+          <TriangleAlert size={14} className="shrink-0" /> {error}
+        </div>
+      )}
       <div className="mono text-[12px] text-muted flex items-center gap-1.5">
         <TriangleAlert size={14} className="text-warn shrink-0" />
         Se ven en el mapa (Módulo 1), en la vista en planta y en el BOM con sus postes y herrajes.
