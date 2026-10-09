@@ -8,9 +8,11 @@ import {
   hectareasDe, calcularMateriales, calcularCotizacion, calcularKPIs,
   precioKmDesdeConsumo, pesoTotalTn, camionSugerido, refuerzoEfectivoM,
   TIPOS_ALAMBRADO, PARAMS_DEFAULT, contarTorniquetes, atadoresConTorniquete,
-  TIPOS_ALAMBRE, tipoAlambre, ESPECIES_MADERA, especieMadera
+  TIPOS_ALAMBRE, tipoAlambre, ESPECIES_MADERA, especieMadera,
+  PRECIOS_TRANQUERAS_DEFAULT
 } from '../src/lib/calc.js';
-import { generarPresupuestoPDF } from '../src/lib/pdf.js';
+import { generarPresupuestoPDF, jpegDesdeDataUrl } from '../src/lib/pdf.js';
+import { fmtM2, fechaLocalCorta } from '../src/lib/format.js';
 import {
   replanteoExacto, replanteoLinea, puntoEnDistancia,
   validarVarillas, materialesTranqueras, agregarTranquera, normalizarTranquera,
@@ -330,6 +332,73 @@ const vv120 = validarVarillas(12, 9, 'comun'); // claro 12 m / (9+1) = 120 cm
 assert(vv120.ok === true && vv120.espaciamientoCm === 120, 'varillas a 120 cm: dentro de regla', JSON.stringify(vv120));
 const vv200 = validarVarillas(12, 5, 'comun'); // claro 12 m / (5+1) = 200 cm
 assert(vv200.ok === false, 'varillas a 200 cm: fuera de regla (máx 180)');
+
+console.log('\n== Materiales del dueño + IVA + PDF rediseñado ==');
+// Regla de dominio: materiales los pone el dueño → van al BOM pero no al costo
+const cotDueno = calcularCotizacion({ ...proyectoTest, materialesDueno: true }, preciosTest);
+assert(cotDueno.materialesDueno === true, 'flag materialesDueno');
+assert(cotDueno.totalMateriales === 0, 'dueño: materiales no se cotizan', cotDueno.totalMateriales);
+assert(cotDueno.totalMaterialesBruto === cot.totalMateriales, 'dueño: bruto de referencia intacto');
+assert(cotDueno.materiales.length === cot.materiales.length && cotDueno.materiales.length > 0,
+  'dueño: el BOM conserva todos los ítems (' + cotDueno.materiales.length + ')');
+const qPoste = cotDueno.materiales.find((m) => m.codigo === 'poste-esquinero');
+assert(qPoste && qPoste.cantidad === 2, 'dueño: cantidades del BOM intactas');
+assert(cotDueno.subtotal === cotDueno.manoObra.total + cotDueno.logistica.total, 'dueño: subtotal = MO + log');
+assert(cotDueno.total < cot.total, 'dueño: total menor que cotizando materiales');
+const cotNormal = calcularCotizacion({ ...proyectoTest, materialesDueno: false }, preciosTest);
+assert(cotNormal.totalMateriales === cot.totalMateriales, 'materialesDueno=false: comportamiento anterior');
+// IVA sobre mano de obra: 10,5 % (default de la app) y 21 %, o sin IVA (en B)
+const cotIva105 = calcularCotizacion({ ...proyectoTest, ivaModo: '10.5' }, preciosTest);
+assert(cotIva105.iva.modo === '10.5' && cerca(cotIva105.iva.monto, 1500000 * 0.105, 0.01),
+  'IVA 10,5 % sobre MO = $157.500', cotIva105.iva.monto);
+assert(cerca(cotIva105.total, cot.total + 1500000 * 0.105, 0.01), 'total incluye IVA discriminado');
+const cotIva21 = calcularCotizacion({ ...proyectoTest, ivaModo: '21' }, preciosTest);
+assert(cerca(cotIva21.iva.monto, 1500000 * 0.21, 0.01), 'IVA 21 % sobre MO', cotIva21.iva.monto);
+const cotSinIva = calcularCotizacion({ ...proyectoTest, ivaModo: 'sin' }, preciosTest);
+assert(cotSinIva.iva.modo === 'sin' && cotSinIva.iva.monto === 0 && cotSinIva.total === cot.total,
+  'sin IVA (en B): total sin cambios');
+assert(cot.iva.modo === 'sin' && cot.iva.monto === 0, 'default función pura: sin IVA (compatibilidad)');
+assert(cot.materialesDueno === false, 'default función pura: materiales se cotizan (compatibilidad)');
+// Códigos nuevos de tranquera/tranquerón tienen precio en PRECIOS_DEMO
+const preciosConTrq = [...preciosTest];
+for (const [codigo, precio] of Object.entries(PRECIOS_TRANQUERAS_DEFAULT)) preciosConTrq.push({ codigo, precio });
+const cotTrq = calcularCotizacion({
+  ...proyectoTest,
+  params: { tranquerasDetalle: [{ pos: 100, tipo: 'tranquera', anchoM: 3.5 }, { pos: 400, tipo: 'tranqueron', anchoM: 12 }] }
+}, preciosConTrq);
+assert(!cotTrq.faltantes.includes('tranquera-350') && !cotTrq.faltantes.includes('tranqueron-1200'),
+  'tranquera-350 y tranqueron-1200 con precio (sin aviso)', cotTrq.faltantes.join(','));
+// Formato: metros con 2 decimales y fecha local (nunca ISO ni floats crudos)
+assert(fmtM2(719.1886887034424) === '719,19 m', 'metros redondeados a 2 decimales', fmtM2(719.1886887034424));
+assert(fechaLocalCorta(new Date(2026, 9, 9)) === '09/10/2026', 'fecha local DD/MM/AAAA', fechaLocalCorta(new Date(2026, 9, 9)));
+// Parser JPEG mínimo (1×1) construido a mano
+const tinyBytes = [0xFF,0xD8, 0xFF,0xE0,0x00,0x0F, 0x46,0x49,0x46,0x00,0x01,0x01,0x00,0x00,0x01,0x00,0x01,0x00,0x00,
+  0xFF,0xC0,0x00,0x0B, 0x08,0x00,0x01,0x00,0x01, 0x01,0x01,0x11,0x00, 0xFF,0xD9];
+const tinyJpeg = 'data:image/jpeg;base64,' + Buffer.from(tinyBytes).toString('base64');
+const dim = jpegDesdeDataUrl(tinyJpeg);
+assert(dim && dim.w === 1 && dim.h === 1, 'parser JPEG: dimensiones 1×1');
+assert(jpegDesdeDataUrl('data:image/png;base64,xx') === null, 'parser JPEG: rechaza no-JPEG');
+// PDF rediseñado: empresa + dueño + IVA + logo
+const blob2 = generarPresupuestoPDF({
+  empresa: { nombreFantasia: 'EL ATADOR', tagline: 'Alambrados Rurales', cuit: '20-12345678-9', telefono: '02392 15-1234', logoDataUrl: tinyJpeg },
+  numero: 'AL-2026-001', fecha: '09/10/2026', validezDias: 15,
+  cliente: { nombre: 'Estancia Demo', campo: 'Lote 1', localidad: 'Trenque Lauquen' },
+  tipoNombre: 'Suspendido 7 hilos', metros: 719.1886887034424, poligono: false,
+  materialesDueno: true,
+  materiales: cotDueno.materiales.slice(0, 3).map((m) => ({ cantidad: m.cantidad, unidad: m.unidad, descripcion: m.descripcion, precioUnit: m.precioUnit, costo: m.costo })),
+  totalMateriales: 0, manoObra: cotDueno.manoObra, logistica: cotDueno.logistica,
+  subtotal: cotDueno.subtotal, contingencia: cotDueno.contingencia, margen: cotDueno.margen,
+  iva: { modo: '10.5', porc: 10.5, monto: cotDueno.manoObra.total * 0.105 },
+  total: cotDueno.total + cotDueno.manoObra.total * 0.105,
+  faltantes: [], observaciones: 'Prueba integral ñandú'
+});
+assert(blob2 instanceof Blob && blob2.type === 'application/pdf', 'PDF rediseñado: Blob válido');
+const buf2 = Buffer.from(await blob2.arrayBuffer());
+assert(buf2.includes('EL ATADOR'), 'PDF: nombre de la empresa');
+assert(buf2.includes('/DCTDecode') && buf2.includes('/ImLogo'), 'PDF: logo JPEG incrustado');
+assert(buf2.includes('IVA'), 'PDF: IVA discriminado');
+assert(buf2.includes('719,19 m'), 'PDF: metros con 2 decimales', );
+assert(buf2.includes('provee el due'), 'PDF: aclara materiales del dueño');
 
 console.log('\n----------------------------------------');
 console.log('Resultado: ' + ok + ' OK, ' + mal + ' FALLIDAS');

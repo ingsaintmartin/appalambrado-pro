@@ -5,10 +5,11 @@
 import React from 'react';
 import { useCostEngine } from '../hooks/useCostEngine.js';
 import { useStore } from '../store.js';
-import { Card, Badge, Btn, Chip, SliderRow, Stepper, SectionTitle, Field } from './ui.jsx';
-import { fmtARS, fmtM, fmtNum, fmtPct, fmtFecha } from '../lib/format.js';
+import { Card, Badge, Btn, Chip, SliderRow, Stepper, SectionTitle, Field, Toggle } from './ui.jsx';
+import { fmtARS, fmtM, fmtM2, fmtNum, fmtPct, fmtFecha, fechaLocalCorta } from '../lib/format.js';
 import { generarPresupuestoPDF } from '../lib/pdf.js';
 import { compartirPresupuesto, descargarPDF } from '../lib/share.js';
+import { hectareasDe } from '../lib/calc.js';
 import { AlertTriangle, MessageCircle, FileDown, CheckCircle2, CalendarDays, Ruler, Shapes, Timer } from 'lucide-react';
 
 const inputNum = 'mono text-right border-[1.5px] border-line rounded-md px-2 py-1 min-h-[44px] bg-white w-full';
@@ -54,10 +55,13 @@ function MetaItem({ icon, label, value }) {
 export default function Module3() {
   const eng = useCostEngine();
   const costos = useStore((s) => s.costos);
+  const empresa = useStore((s) => s.empresa);
 
   // Mapeo a cuadrantes (nomenclatura del diseño A/B/C/D)
   const cuadA = { items: eng.materiales || [], subtotal: eng.totalMateriales || 0 };
   const faltantes = eng.faltantes || [];
+  const dueno = eng.materialesDueno === true;
+  const iva = eng.iva || { modo: 'sin', porc: 0, monto: 0 };
   const mo = eng.manoObra || { nuevo: 0, desarme: 0, tranqueras: 0, total: 0, detalle: {} };
   const moD = mo.detalle || {};
   const cuadC = { flete: eng.logistica?.flete || 0, viaticos: eng.logistica?.viaticos || 0, total: eng.logistica?.total || 0, detalle: eng.logistica?.detalle || {} };
@@ -74,11 +78,18 @@ export default function Module3() {
   const precioKmSug = eng.precioKmDesdeConsumo ? eng.precioKmDesdeConsumo(8, 2800) : 0;
 
   const docPDF = () => ({
+    empresa: empresa || undefined,
     numero,
-    fecha: hoy.toISOString(),
+    fecha: fechaLocalCorta(hoy),
+    validezDias: 15,
     cliente: { nombre: obra.nombre || '—', campo: obra.lote || '', localidad: obra.localidad || '' },
     tipoNombre: eng.tipoNombre,
     metros,
+    poligono: !!eng.proyecto?.medicion?.poligono,
+    hectareas: eng.proyecto?.medicion?.poligono
+      ? Math.round(hectareasDe(eng.proyecto.medicion.vertices || []) * 10) / 10
+      : 0,
+    materialesDueno: dueno,
     materiales: cuadA.items.map((it) => ({
       cantidad: it.cantidad, unidad: it.unidad, descripcion: it.display + ' · ' + it.descripcion,
       precioUnit: it.precioUnit || 0, costo: it.costo || 0
@@ -89,9 +100,11 @@ export default function Module3() {
     subtotal: eng.subtotal || 0,
     contingencia: eng.contingencia || { porc: 0, monto: 0 },
     margen: eng.margen || { porc: 0, monto: 0 },
+    iva: { modo: iva.modo, porc: iva.porc, monto: iva.monto },
     total: eng.total || 0,
-    faltantes,
+    faltantes: dueno ? [] : faltantes,
     observaciones: 'Válido 15 días corridos. Precios siderúrgicos Acindar / Quebracho sujetos a revisión quincenal por volatilidad cambiaria.'
+      + (dueno ? ' Los materiales los provee el dueño.' : '')
   });
 
   const proyectoParaShare = () => ({
@@ -101,13 +114,16 @@ export default function Module3() {
 
   const resumenLike = () => ({
     totalMateriales: cuadA.subtotal,
+    totalMaterialesBruto: eng.totalMaterialesBruto || 0,
+    materialesDueno: dueno,
+    iva: { modo: iva.modo, porc: iva.porc, monto: iva.monto },
     manoObra: { total: mo.total },
     logistica: { total: cuadC.total },
     subtotal: eng.subtotal || 0,
     contingencia: eng.contingencia || { porc: 0, monto: 0 },
     margen: eng.margen || { porc: 0, monto: 0 },
     total: eng.total || 0,
-    faltantes
+    faltantes: dueno ? [] : faltantes
   });
 
   const nombreArchivo = 'presupuesto_' + numero + '.pdf';
@@ -171,15 +187,27 @@ export default function Module3() {
         {/* A — Materiales */}
         <Card className="!p-0 overflow-hidden">
           <div className="p-4 pb-2 flex items-start justify-between gap-3">
-            <SectionTitle n="A" title="Costos de Materiales e Insumos" sub="Sincronizado con Módulo 2 (despiece físico)" />
+            <SectionTitle n="A" title="Materiales e Insumos" sub="Sincronizado con Módulo 2 (despiece físico)" />
             <div className="text-right shrink-0">
               <div className="text-[11px] text-muted uppercase font-semibold tracking-wide">Subtotal materiales</div>
-              <div className="display font-bold text-[20px] mono">{fmtARS(cuadA.subtotal)}</div>
+              <div className="display font-bold text-[20px] mono">{dueno ? '—' : fmtARS(cuadA.subtotal)}</div>
             </div>
           </div>
-          {faltantes.length > 0 && (
+          <div className="px-4 pb-2">
+            <Toggle
+              checked={dueno}
+              onChange={(v) => eng.setCostos({ materialesDueno: v })}
+              label={<span><strong>Materiales provistos por el dueño</strong> <span className="text-muted">(no se cotizan, solo cantidades)</span></span>}
+            />
+          </div>
+          {!dueno && faltantes.length > 0 && (
             <div className="px-4 pb-2">
               <Badge tone="warn">Faltan precios: {faltantes.length} ({faltantes.slice(0, 3).join(', ')}{faltantes.length > 3 ? '…' : ''})</Badge>
+            </div>
+          )}
+          {dueno && (
+            <div className="px-4 pb-2">
+              <Badge tone="muted">Cantidades informativas — el dueño provee los materiales</Badge>
             </div>
           )}
           <div className="overflow-x-auto px-4 pb-4">
@@ -188,8 +216,8 @@ export default function Module3() {
                 <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-line">
                   <th className="py-1.5 pr-2 font-semibold">Insumo / Especificación</th>
                   <th className="py-1.5 pr-2 font-semibold text-right w-[70px]">Cant.</th>
-                  <th className="py-1.5 pr-2 font-semibold text-right w-[110px]">Unitario (ARS)</th>
-                  <th className="py-1.5 font-semibold text-right w-[100px]">Total (ARS)</th>
+                  {!dueno && <th className="py-1.5 pr-2 font-semibold text-right w-[110px]">Unitario (ARS)</th>}
+                  {!dueno && <th className="py-1.5 font-semibold text-right w-[100px]">Total (ARS)</th>}
                 </tr>
               </thead>
               <tbody>
@@ -200,12 +228,16 @@ export default function Module3() {
                       <div className="mono text-[11px] text-muted">{it.display}{it.detalle ? ' · ' + it.detalle : ''}</div>
                     </td>
                     <td className="py-2 pr-2 text-right mono whitespace-nowrap">{fmtNum(it.cantidad)} {it.unidad}</td>
-                    <td className="py-2 pr-2">
-                      <PrecioInput codigo={it.codigo} valor={it.precioUnit} sinPrecio={it.sinPrecio} />
-                    </td>
-                    <td className="py-2 text-right mono font-semibold whitespace-nowrap">
-                      {it.sinPrecio ? <span className="text-warn">S/P</span> : fmtARS(it.costo)}
-                    </td>
+                    {!dueno && (
+                      <td className="py-2 pr-2">
+                        <PrecioInput codigo={it.codigo} valor={it.precioUnit} sinPrecio={it.sinPrecio} />
+                      </td>
+                    )}
+                    {!dueno && (
+                      <td className="py-2 text-right mono font-semibold whitespace-nowrap">
+                        {it.sinPrecio ? <span className="text-warn">S/P</span> : fmtARS(it.costo)}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -221,6 +253,32 @@ export default function Module3() {
               <div className="text-[11px] text-muted uppercase font-semibold tracking-wide">Subtotal cuadrilla</div>
               <div className="display font-bold text-[20px] mono text-quebracho">{fmtARS(mo.total)}</div>
             </div>
+          </div>
+          <div className="px-4 pb-3">
+            <div className="text-[12px] font-semibold text-muted uppercase tracking-wide mb-1.5">IVA sobre mano de obra</div>
+            <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="IVA sobre mano de obra">
+              {[
+                { v: 'sin', t: 'Sin IVA (en B)' },
+                { v: '10.5', t: 'IVA 10,5 %' },
+                { v: '21', t: 'IVA 21 %' }
+              ].map((op) => (
+                <button
+                  key={op.v}
+                  role="radio"
+                  aria-checked={iva.modo === op.v}
+                  onClick={() => eng.setCostos({ ivaModo: op.v })}
+                  className={'rounded-md border-[1.5px] px-2 py-2 min-h-[48px] text-[13px] font-semibold ' +
+                    (iva.modo === op.v ? 'bg-agro text-white border-agro-deep' : 'bg-white border-line text-ink')}
+                >
+                  {op.t}
+                </button>
+              ))}
+            </div>
+            {iva.modo !== 'sin' && (
+              <div className="mono text-[13px] text-muted mt-1.5">
+                IVA {String(iva.porc).replace('.', ',')} % s/ mano de obra: <strong className="text-ink">{fmtARS(iva.monto)}</strong>
+              </div>
+            )}
           </div>
           <div className="px-4 pb-4 flex flex-col gap-3">
             <div className="rounded-md border border-line bg-canvas/60 p-3">
@@ -361,7 +419,10 @@ export default function Module3() {
         <div className="text-[11px] font-semibold tracking-widest uppercase text-white/70 mb-1">Resumen ejecutivo de liquidación</div>
         <h3 className="display font-bold text-[22px] leading-7 md:text-[26px] md:leading-8 mb-1">Total Presupuestado Llave en Mano</h3>
         <p className="text-[13px] text-white/70 max-w-2xl mb-4">
-          Incluye provisión completa de materiales, replanteo láser/RTK, desmontaje parcial, mano de obra de cuadrilla y logística integral a tranquera abierta.
+          {dueno
+            ? 'No incluye materiales (los provee el dueño). Incluye replanteo, mano de obra de cuadrilla y logística integral.'
+            : 'Incluye provisión completa de materiales, replanteo láser/RTK, desmontaje parcial, mano de obra de cuadrilla y logística integral a tranquera abierta.'}
+          {iva.modo !== 'sin' && ' Más IVA ' + String(iva.porc).replace('.', ',') + ' % sobre mano de obra.'}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="rounded-md border border-white/20 bg-white/5 p-3">
@@ -376,6 +437,11 @@ export default function Module3() {
             <div className="text-[11px] uppercase tracking-wide text-white/60 font-semibold">Valor final liquidación</div>
             <div className="display font-bold text-[28px] mono text-white">{fmtARS(eng.total)}</div>
             <div className="mono text-[13px] text-white/70">{fmtARS(eng.porMetro)} / m lineal</div>
+            {iva.modo !== 'sin' && (
+              <div className="mono text-[12px] text-white/70 mt-1">
+                Incluye IVA {String(iva.porc).replace('.', ',')} % s/ MO: {fmtARS(iva.monto)}
+              </div>
+            )}
           </div>
         </div>
       </div>

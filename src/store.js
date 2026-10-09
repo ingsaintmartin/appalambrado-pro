@@ -116,7 +116,11 @@ export const useStore = create(persist((set, get) => ({
     precioM: 600, metrosDesarme: 500, precioDesarme: 350,
     precioTranquera: 105000,
     fleteKm: 120, precioKm: 3500, viaticos: 240000,
-    contingencia: 5, margen: 22
+    contingencia: 5, margen: 22,
+    // Regla de dominio: los materiales los pone el dueño (default SÍ).
+    materialesDueno: true,
+    // IVA: 'sin' (en B) | '10.5' (default, lo más común) | '21' — sobre mano de obra.
+    ivaModo: '10.5'
   },
   ejec: { ...ejecVacia(), avanceM: 2620, dias: 10 },
   resumen: null,       // snapshot del último presupuesto aprobado (base M4)
@@ -171,6 +175,25 @@ export const useStore = create(persist((set, get) => ({
   setPrecio: (codigo, valor) => set((s) => ({ precios: { ...s.precios, [codigo]: valor } })),
 
   setCostos: (patch) => set((s) => ({ costos: { ...s.costos, ...patch } })),
+
+  /* --- empresa (perfil del contratista, marca configurable) --- */
+  empresa: null,
+  cargarEmpresa: async () => {
+    const { cargarEmpresa } = await import('./lib/empresa.js');
+    set({ empresa: await cargarEmpresa() });
+  },
+  guardarEmpresa: async (patch) => {
+    const { guardarEmpresa } = await import('./lib/empresa.js');
+    const reg = await guardarEmpresa(patch);
+    set({ empresa: reg });
+    return reg;
+  },
+  restablecerEmpresa: async () => {
+    const { restablecerEmpresa } = await import('./lib/empresa.js');
+    const reg = await restablecerEmpresa();
+    set({ empresa: reg });
+    return reg;
+  },
 
   setEjec: (patch) => set((s) => ({ ejec: { ...s.ejec, ...patch } })),
   setReal: (codigo, cantidad, precioUnit) => set((s) => ({

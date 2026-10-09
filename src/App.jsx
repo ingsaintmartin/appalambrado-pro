@@ -1,6 +1,6 @@
 /* Shell: header persistente + sidebar (desktop) / bottom nav (mobile) */
 import React, { useEffect, useState } from 'react';
-import { Users, Plus } from 'lucide-react';
+import { Users, Plus, Building2 } from 'lucide-react';
 import { useStore } from './store.js';
 import { contarPendientes } from './lib/db.js';
 import { iniciarSyncAutomatica, tursoConfigurado } from './lib/turso.js';
@@ -11,6 +11,7 @@ import Module3 from './components/Module3.jsx';
 import Module4 from './components/Module4.jsx';
 import ClientManager from './components/ClientManager.jsx';
 import NewProjectModal from './components/NewProjectModal.jsx';
+import EmpresaModal from './components/EmpresaModal.jsx';
 
 const MODULOS = [
   { n: 1, titulo: 'Mapeo Topográfico & GIS', sub: 'Haversine, perímetro y ha' },
@@ -19,7 +20,7 @@ const MODULOS = [
   { n: 4, titulo: 'Ejecución & Control', sub: 'Desvíos, auditoría y variance KPIs' }
 ];
 
-function Header({ onClientes, onNuevaObra }) {
+function Header({ onClientes, onNuevaObra, onEmpresa }) {
   const obra = useStore((s) => s.obra);
   const clienteId = useStore((s) => s.clienteId);
   const clientes = useStore((s) => s.clientes);
@@ -51,6 +52,10 @@ function Header({ onClientes, onNuevaObra }) {
           onClick={onClientes}
           className="hidden sm:inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/25 rounded-md px-3 min-h-[44px] text-[14px] font-semibold"
         ><Users size={16} /> Clientes</button>
+        <button
+          onClick={onEmpresa}
+          className="hidden sm:inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/25 rounded-md px-3 min-h-[44px] text-[14px] font-semibold ml-2"
+        ><Building2 size={16} /> Empresa</button>
         <button
           onClick={onNuevaObra}
           className="hidden sm:inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 border border-white/25 rounded-md px-3 min-h-[44px] text-[14px] font-semibold ml-2"
@@ -147,15 +152,18 @@ function StatusBar() {
 export default function App() {
   const modulo = useStore((s) => s.modulo);
   const cargarClientes = useStore((s) => s.cargarClientes);
+  const cargarEmpresa = useStore((s) => s.cargarEmpresa);
   const [showClientes, setShowClientes] = useState(false);
   const [showNuevaObra, setShowNuevaObra] = useState(false);
+  const [showEmpresa, setShowEmpresa] = useState(false);
   const [clienteFijo, setClienteFijo] = useState(null);
-  useEffect(() => { iniciarSyncAutomatica(); cargarClientes().catch(() => {}); }, []);
+  useEffect(() => { iniciarSyncAutomatica(); cargarClientes().catch(() => {}); cargarEmpresa().catch(() => {}); }, []);
   return (
     <div className="h-full flex flex-col">
       <Header
         onClientes={() => setShowClientes(true)}
         onNuevaObra={() => { setClienteFijo(null); setShowNuevaObra(true); }}
+        onEmpresa={() => setShowEmpresa(true)}
       />
       <div className="flex-1 flex min-h-0">
         <Sidebar />
@@ -182,6 +190,9 @@ export default function App() {
           onClose={() => setShowNuevaObra(false)}
           onCreada={() => setShowNuevaObra(false)}
         />
+      )}
+      {showEmpresa && (
+        <EmpresaModal onClose={() => setShowEmpresa(false)} />
       )}
     </div>
   );
