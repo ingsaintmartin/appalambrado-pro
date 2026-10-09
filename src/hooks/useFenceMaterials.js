@@ -57,6 +57,8 @@ export function useFenceMaterials() {
       cadaNAtadores: m.cadaNAtadores,
       torniqEsquineros: m.torniqEsquineros,
       torniqCadaAtadores: m.torniqCadaAtadores,
+      grampasIntermedios: m.grampasIntermedios,
+      margenExtremo: m.margenExtremo,
       // Tipos de alambre y especies de madera (tarjetas 01, 02 y 04)
       alambreLiso: m.alambreLiso,
       alambrePua: m.alambrePua,

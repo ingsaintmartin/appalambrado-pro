@@ -93,6 +93,10 @@ export const PARAMS_DEFAULT = {
   cadaNAtadores: 10,
   torniqEsquineros: true,
   torniqCadaAtadores: 1,
+  /* Grampas: 1 por hilo en cada poste (fijan el alambre al poste). Toggle. */
+  grampasIntermedios: true,
+  /* Tranqueras: margen (m) para considerar ubicada "en extremo" (ajustable). */
+  margenExtremo: 10,
   /* Tipos de alambre y maderas (selectores en Módulo 2) */
   alambreLiso: '17-15',
   alambrePua: '4p',
@@ -256,13 +260,14 @@ function itemPoste(codigo, especieId, cantidad, detalle) {
    que sale del esquinero — no 2 fijos por esquinero.
    - Línea: 2 extremos × 1 dirección = 2 puntales.
    - Polígono: nV esquinas × 2 direcciones = 2×nV puntales.
-   - Tranquera: 2 postes × 1 dirección (el hilo tensa de un solo lado) = 2 por tranquera.
+   - Tranqueras: según su aporte (extremo: +1 salvo que coincida con el
+     esquinero de la punta; medio: 2, uno por poste).
    Regla de campo (2026-10-09). */
-export function puntalesPorEsquineros({ poligono, nVertices, trqEsquineros, conTirantes }) {
+export function puntalesPorEsquineros({ poligono, nVertices, trqPuntales, conTirantes }) {
   if (!conTirantes) return 0;
   const deLinea = poligono ? 0 : 2 * 1;
   const dePoligono = poligono ? Math.max(0, Math.round(nVertices) || 0) * 2 : 0;
-  const deTranqueras = Math.max(0, Math.round(trqEsquineros) || 0) * 1;
+  const deTranqueras = Math.max(0, Math.round(trqPuntales) || 0);
   return deLinea + dePoligono + deTranqueras;
 }
 
@@ -277,7 +282,11 @@ function itemTirante(cantidad, detalle) {
 
 export function calcularMateriales(tipo, metros, opts = {}) {
   const L = Math.max(0, parseFloat(metros) || 0);
-  const o = Object.assign({}, PARAMS_DEFAULT, opts);
+  // Los undefined del estado persistido viejo NO deben pisar los defaults
+  // (bug 2026-10-09: torniqEsquineros undefined → pajaritos en 0 con el toggle activo).
+  const limpios = {};
+  for (const k of Object.keys(opts || {})) if (opts[k] !== undefined) limpios[k] = opts[k];
+  const o = Object.assign({}, PARAMS_DEFAULT, limpios);
   const poligono = !!o.poligono;
   const nV = Math.max(o.nVertices || 0, poligono ? 3 : 0);
   const items = [];
@@ -301,14 +310,14 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     const rollosLiso = Math.ceil(mLiso / tLiso.rolloM);
     const rollosPua = Math.ceil(mPua / tPua.rolloM);
     // Tranqueras ubicadas: 2 postes tipo esquinero por cada una (+ puntales).
-    const trq = materialesTranqueras(o.tranquerasDetalle, o.conTirantes);
+    const trq = materialesTranqueras(o.tranquerasDetalle, o.conTirantes, L, o.margenExtremo);
     // Esquineros: 2 en línea (extremos); 1 por vértice en polígono; + los de tranqueras.
     const esquineros = (poligono ? nV : 2) + trq.esquineros;
     const detEsq = (poligono ? nV + ' vértices GPS' : '2 extremos de línea') +
       (trq.esquineros > 0 ? ' + ' + trq.esquineros + ' por tranqueras' : '');
     items.push(itemPoste('poste-esquinero', o.maderaEsquinero, esquineros, detEsq));
     // Puntales: 1 por dirección de alambrado (línea: 2×1; polígono: nV×2; tranqueras: 2×1 c/u).
-    const tirantes = puntalesPorEsquineros({ poligono, nVertices: nV, trqEsquineros: trq.esquineros, conTirantes: o.conTirantes });
+    const tirantes = puntalesPorEsquineros({ poligono, nVertices: nV, trqPuntales: trq.tirantes, conTirantes: o.conTirantes });
     // Replanteo exacto (solo lineal): atadores 2.60m + intermedios, todo parejo.
     const rp = (!poligono && o.replanteo) ? replanteoLinea(L, o.replanteo.atadoresM, o.replanteo.intermediosM) : null;
     let atadores, intermedios, notaRef;
@@ -353,11 +362,14 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     if (pajaritos > 0) items.push(item('torniqueta-pajarito', pajaritos, nHilos + ' hilos × ' + esquineros + ' esquineros'));
     const torniquetes = aereas + pajaritos;
     // Grampas (estimación): 1 por hilo en cada poste que sostiene hilo.
+    // Fijan el alambre al poste. Toggle "grampasIntermedios" en tarjeta 05.
     const postesConGrampa = esquineros + atadores + intermedios;
-    const grampas = postesConGrampa * T.hilos * o.grampasPorHilo;
-    const g = item('grampa', grampas, 'estimación');
-    g.pesoKgDetalle = Math.round(grampas * (PESO_KG.grampa || 0.02) * 10) / 10;
-    items.push(g);
+    const grampas = o.grampasIntermedios ? Math.round(postesConGrampa * T.hilos * o.grampasPorHilo) : 0;
+    if (grampas > 0) {
+      const g = item('grampa', grampas, 'fijan el alambre al poste (estimación)');
+      g.pesoKgDetalle = Math.round(grampas * (PESO_KG.grampa || 0.02) * 10) / 10;
+      items.push(g);
+    }
     // Alambre dulce para ataduras: ~1.4% del alambre total.
     items.push(item('alambre-dulce', Math.round((mLiso + mPua) * 0.014), 'ataduras de varilla'));
     // Tirantes dobles de contención por esquinero (si aplica).
@@ -372,20 +384,20 @@ export function calcularMateriales(tipo, metros, opts = {}) {
       rollosLiso, rollosPua, torniquetes, torniquetesAereas: aereas, torniquetesPajarito: pajaritos,
       atadoresT, grampas,
       alambreDulceM: Math.round((mLiso + mPua) * 0.014),
-      esqTranquera: trq.esquineros, tranquerasDetalle: trq.detalle, replanteo: rp,
+      esqTranquera: trq.esquineros, tirantesTranquera: trq.tirantes, tranquerasDetalle: trq.detalle, replanteo: rp,
       hilos: nHilos, puas: nPuas, postes: esquineros + atadores + intermedios };
     return { items, resumen };
   }
 
   if (tipo === 'convencional') {
     const hilos = 7;
-    const trq = materialesTranqueras(o.tranquerasDetalle, o.conTirantes);
+    const trq = materialesTranqueras(o.tranquerasDetalle, o.conTirantes, L, o.margenExtremo);
     /* Esquineros: 2 extremos en línea (1 por vértice en polígono) + tranqueras.
        Puntales: 1 por dirección de alambrado (ver puntalesPorEsquineros). */
     const esquinerosBase = poligono ? nV : 2;
     const esquineros = esquinerosBase + trq.esquineros;
     // Puntales: 1 por dirección (línea 2×1, polígono nV×2, tranqueras 1 por poste).
-    const tirantes = puntalesPorEsquineros({ poligono, nVertices: nV, trqEsquineros: trq.esquineros, conTirantes: o.conTirantes });
+    const tirantes = puntalesPorEsquineros({ poligono, nVertices: nV, trqPuntales: trq.tirantes, conTirantes: o.conTirantes });
     // Posiciones de poste cada 12 m (floor + 1, como el diseño original).
     const nPos = poligono ? Math.max(3, Math.round(L / o.posteConvencionalCadaM))
       : Math.floor(L / o.posteConvencionalCadaM) + 1;
@@ -428,29 +440,32 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     if (pajaritos > 0) items.push(item('torniqueta-pajarito', pajaritos, hilos + ' hilos × ' + esquineros + ' esquineros'));
     const torniquetes = aereas + pajaritos;
     // Grampas: 1 por hilo en cada poste que sostiene hilo (esquineros + atadores + intermedios).
-    const grampas = (esquineros + atadores + intermedios) * hilos * o.grampasPorHilo;
-    const gC = item('grampa', grampas, 'estimación');
-    gC.pesoKgDetalle = Math.round(grampas * (PESO_KG.grampa || 0.02) * 10) / 10;
-    items.push(gC);
+    // Toggle "grampasIntermedios" en tarjeta 05.
+    const grampas = o.grampasIntermedios ? Math.round((esquineros + atadores + intermedios) * hilos * o.grampasPorHilo) : 0;
+    if (grampas > 0) {
+      const gC = item('grampa', grampas, 'fijan el alambre al poste (estimación)');
+      gC.pesoKgDetalle = Math.round(grampas * (PESO_KG.grampa || 0.02) * 10) / 10;
+      items.push(gC);
+    }
     items.push(item('alambre-dulce', Math.round(mAl * 0.014), 'ataduras'));
     items.push(...itemsTranquerasUbicadas(trq));
     // Resumen unificado (misma forma que suspendido7): única fuente de verdad.
     return { items, resumen: { esquineros, tirantes, atadores, intermedios, refuerzos: atadores,
       varillas, mLiso: Math.round(mAl), mPua: 0, rollosLiso, rollosPua: 0,
       torniquetes, torniquetesAereas: aereas, torniquetesPajarito: pajaritos, atadoresT, grampas, alambreDulceM: Math.round(mAl * 0.014),
-      esqTranquera: trq.esquineros, tranquerasDetalle: trq.detalle, replanteo: rpC,
+      esqTranquera: trq.esquineros, tirantesTranquera: trq.tirantes, tranquerasDetalle: trq.detalle, replanteo: rpC,
       hilos, puas: 0, postes: nPos } };
   }
 
   // electrico
   const hilos = Math.min(3, Math.max(1, o.hilosElec || 2));
-  const trqE = materialesTranqueras(o.tranquerasDetalle, o.conTirantes);
+  const trqE = materialesTranqueras(o.tranquerasDetalle, o.conTirantes, L, o.margenExtremo);
   /* Esquineros: 2 extremos en línea (1 por vértice en polígono) + tranqueras.
      Antes no se contaban salvo por tranquera → la tarjeta 01 mostraba 0. */
   const esquinerosBaseE = poligono ? nV : 2;
   const esquinerosE = esquinerosBaseE + trqE.esquineros;
   // Puntales: 1 por dirección (línea 2×1, polígono nV×2, tranqueras 1 por poste).
-  const tirantesE = puntalesPorEsquineros({ poligono, nVertices: nV, trqEsquineros: trqE.esquineros, conTirantes: o.conTirantes });
+  const tirantesE = puntalesPorEsquineros({ poligono, nVertices: nV, trqPuntales: trqE.tirantes, conTirantes: o.conTirantes });
   const estacones = Math.max(0, (poligono ? Math.max(3, Math.round(L / o.posteElectricoCadaM))
     : Math.floor(L / o.posteElectricoCadaM) + 1) - esquinerosBaseE);
   items.push(itemPoste('poste-esquinero', o.maderaEsquinero, esquinerosE,
@@ -474,7 +489,7 @@ export function calcularMateriales(tipo, metros, opts = {}) {
     mLiso: 0, mPua: 0, rollosLiso: 0, rollosPua: 0,
     mElectro: Math.round(mAl), rollosElectro: rollosElec,
     torniquetes: tensores, torniquetesAereas: 0, torniquetesPajarito: 0, atadoresT: 0, grampas: 0,
-    alambreDulceM: 0, esqTranquera: trqE.esquineros, tranquerasDetalle: trqE.detalle,
+    alambreDulceM: 0, esqTranquera: trqE.esquineros, tirantesTranquera: trqE.tirantes, tranquerasDetalle: trqE.detalle,
     replanteo: null, hilos, puas: 0, postes: esquinerosE + estacones } };
 }
 
@@ -839,15 +854,48 @@ export const PRECIOS_TRANQUERAS_DEFAULT = (() => {
   return o;
 })();
 
-/* Materiales aportados por tranqueras/tranquerones ubicados:
-   cada uno genera 2 postes tipo esquinero en ese punto
-   (+ 1 puntal por poste si van con tirantes) + sus herrajes.
-   porTipo: { 'tranquera|3.5': { tipo, anchoM, cantidad, posiciones[] } } */
-export function materialesTranqueras(tranquerasDetalle, conTirantes) {
-  const det = (Array.isArray(tranquerasDetalle) ? tranquerasDetalle : []).map(normalizarTranquera);
-  const esquineros = det.length * 2;
-  // 1 puntal por poste de tranquera (el hilo tensa de un solo lado).
-  const tirantes = conTirantes ? esquineros : 0;
+/* Clasificación de tranquera ubicada: EXTREMO si su posición está a <= margen
+   del inicio, o su fin llega a >= L - margen; si no, MEDIO.
+   REGLA DE CAMPO (2026-10-09, del alambrador):
+   - EXTREMO: se usa el esquinero existente de la punta (+0 esquineros; el
+     tranquerón tira en contra de la línea y no se lo lleva). +1 puntal en el
+     poste del extremo (el cierre de palanca va muy tirante y puede traer el
+     palo; la alternativa es un pecho, que NO se calcula). Si ese poste coincide
+     con el esquinero de la línea (<=2 m del fin), su puntal ya está contado
+     como puntal del esquinero → no se duplica.
+   - MEDIO: +2 esquineros (los 2 postes de la tranquera) + 2 puntales
+     (1 por poste: en línea cada poste tensa en 1 dirección). */
+export function clasificarTranquera(t, L, margen) {
+  const m = Math.max(0, parseFloat(margen) || 0);
+  const Lm = Math.max(0, parseFloat(L) || 0);
+  if (!Lm) return 'medio';
+  const ini = parseFloat(t.pos) || 0;
+  const fin = ini + (parseFloat(t.anchoM) || 0);
+  return (ini <= m || fin >= Lm - m) ? 'extremo' : 'medio';
+}
+export function aporteTranquera(t, L, margen) {
+  const m = Math.max(0, parseFloat(margen) || 0);
+  const Lm = Math.max(0, parseFloat(L) || 0);
+  if (clasificarTranquera(t, Lm, m) === 'medio')
+    return { ubicacion: 'medio', esquineros: 2, puntales: 2 };
+  const ini = parseFloat(t.pos) || 0;
+  const fin = ini + (parseFloat(t.anchoM) || 0);
+  const alFinal = fin >= Lm - m;
+  const poste = alFinal ? fin : ini;
+  const extremoLinea = alFinal ? Lm : 0;
+  const comparte = Math.abs(poste - extremoLinea) <= 2;
+  return { ubicacion: 'extremo', esquineros: 0, puntales: comparte ? 0 : 1, compartePuntal: comparte };
+}
+/* Materiales aportados por tranqueras/tranquerones ubicados (regla extremo/medio).
+   porTipo: { 'tranquera|3.5': { tipo, anchoM, cantidad, posiciones[] } }
+   detalle: tranqueras normalizadas con su `aporte` ({ ubicacion, esquineros, puntales }). */
+export function materialesTranqueras(tranquerasDetalle, conTirantes, L, margen) {
+  const det = (Array.isArray(tranquerasDetalle) ? tranquerasDetalle : [])
+    .map(normalizarTranquera)
+    .map((t) => ({ ...t, aporte: aporteTranquera(t, L, margen) }));
+  const esquineros = det.reduce((s, t) => s + t.aporte.esquineros, 0);
+  // 1 puntal por poste en medio; en extremo +1 salvo que coincida con el esquinero.
+  const tirantes = conTirantes ? det.reduce((s, t) => s + t.aporte.puntales, 0) : 0;
   const porTipo = {};
   det.forEach((t) => {
     const k = t.tipo + '|' + t.anchoM;
